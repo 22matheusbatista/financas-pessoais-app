@@ -14,11 +14,12 @@ Para instalar no celular, publique a pasta em um endereco HTTPS, como GitHub Pag
 ## O que ja existe
 
 - Selecao de mes e ano.
-- Menu lateral recolhivel.
+- Menu lateral recolhivel em estilo Notion.
+- Alternancia entre tema claro e escuro.
 - Dashboard com receitas, despesas a vista, cartoes, saldo restante e disponivel.
 - Cadastro e exclusao de receitas.
 - Cadastro e exclusao de despesas pagas com dinheiro, Pix ou debito.
-- Cadastro, edicao e exclusao de cartoes de credito com limite, fechamento e vencimento.
+- Cadastro, edicao inline e exclusao de cartoes de credito com banco, bandeira, logos reais, limite, fechamento e vencimento.
 - Cadastro de compras no cartao com parcelas automaticas.
 - Fatura mensal por cartao.
 - Proximos vencimentos de cartao.

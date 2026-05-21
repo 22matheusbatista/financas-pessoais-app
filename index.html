@@ -29,14 +29,18 @@
         </div>
 
         <nav class="nav-tabs" aria-label="Secoes do app">
-          <button class="nav-tab active" type="button" data-view="dashboard">Painel</button>
-          <button class="nav-tab" type="button" data-view="income">Receitas</button>
-          <button class="nav-tab" type="button" data-view="expenses">Despesas</button>
-          <button class="nav-tab" type="button" data-view="cards">Cartoes</button>
-          <button class="nav-tab" type="button" data-view="categories">Categorias</button>
+          <button class="nav-tab active" type="button" data-view="dashboard"><span class="nav-icon">P</span>Painel</button>
+          <button class="nav-tab" type="button" data-view="income"><span class="nav-icon">R</span>Receitas</button>
+          <button class="nav-tab" type="button" data-view="expenses"><span class="nav-icon">D</span>Despesas</button>
+          <button class="nav-tab" type="button" data-view="cards"><span class="nav-icon">C</span>Cartoes</button>
+          <button class="nav-tab" type="button" data-view="categories"><span class="nav-icon">T</span>Categorias</button>
         </nav>
 
         <div class="storage-panel" aria-label="Dados do app">
+          <button class="theme-toggle" type="button" id="themeToggle" aria-pressed="false">
+            <span class="theme-dot"></span>
+            <span id="themeToggleLabel">Tema escuro</span>
+          </button>
           <button class="secondary-button" type="button" id="exportData">Exportar dados</button>
           <label class="secondary-button file-button">
             Importar dados
@@ -212,33 +216,6 @@
         <section class="view" id="cards">
           <div class="cards-layout">
             <section class="form-stack">
-              <form class="panel form-panel" id="cardForm">
-                <input name="id" type="hidden" />
-                <div class="form-title-row">
-                  <h2 id="cardFormTitle">Novo cartao</h2>
-                  <button class="text-button hidden" type="button" id="cancelCardEdit">Cancelar edicao</button>
-                </div>
-                <label>
-                  Nome
-                  <input name="name" type="text" placeholder="Ex.: Nubank, Inter" required />
-                </label>
-                <label>
-                  Limite total
-                  <input name="limitTotal" type="number" min="1" step="0.01" placeholder="0,00" required />
-                </label>
-                <div class="two-columns">
-                  <label>
-                    Fechamento
-                    <input name="closingDay" type="number" min="1" max="31" step="1" required />
-                  </label>
-                  <label>
-                    Vencimento
-                    <input name="dueDay" type="number" min="1" max="31" step="1" required />
-                  </label>
-                </div>
-                <button class="primary-button" type="submit">Salvar cartao</button>
-              </form>
-
               <form class="panel form-panel" id="purchaseForm">
                 <h2>Nova compra no cartao</h2>
                 <label>
@@ -277,6 +254,7 @@
             <section class="panel">
               <div class="panel-heading">
                 <h2>Cartoes cadastrados</h2>
+                <button class="small-action" type="button" id="newCardButton">Novo cartao</button>
               </div>
               <div id="cardList" class="card-list"></div>
             </section>

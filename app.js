@@ -1,5 +1,6 @@
 const BRL = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 const STORAGE_KEY = "personal-finance-mvp-v2";
+const THEME_STORAGE_KEY = "personal-finance-theme";
 
 const categoryTypes = {
   income: "Receita",
@@ -12,6 +13,28 @@ const paymentMethods = {
   Pix: "Pix",
   Debito: "Debito",
 };
+
+const bankOptions = [
+  { id: "nubank", name: "Nubank", initials: "Nu", className: "bank-nubank", domain: "nubank.com.br" },
+  { id: "inter", name: "Inter", initials: "In", className: "bank-inter", domain: "inter.co" },
+  { id: "itau", name: "Itau", initials: "It", className: "bank-itau", domain: "itau.com.br" },
+  { id: "bradesco", name: "Bradesco", initials: "Br", className: "bank-bradesco", domain: "bradesco.com.br" },
+  { id: "santander", name: "Santander", initials: "St", className: "bank-santander", domain: "santander.com.br" },
+  { id: "bb", name: "Banco do Brasil", initials: "BB", className: "bank-bb", domain: "bb.com.br" },
+  { id: "caixa", name: "Caixa", initials: "Cx", className: "bank-caixa", domain: "caixa.gov.br" },
+  { id: "c6", name: "C6 Bank", initials: "C6", className: "bank-c6", domain: "c6bank.com.br" },
+  { id: "picpay", name: "PicPay", initials: "PP", className: "bank-picpay", domain: "picpay.com" },
+  { id: "other", name: "Outro banco", initials: "BK", className: "bank-other", domain: "" },
+];
+
+const brandOptions = [
+  { id: "mastercard", name: "Mastercard", initials: "MC", className: "brand-mastercard", domain: "mastercard.com" },
+  { id: "visa", name: "Visa", initials: "VISA", className: "brand-visa", domain: "visa.com" },
+  { id: "elo", name: "Elo", initials: "ELO", className: "brand-elo", domain: "elo.com.br" },
+  { id: "amex", name: "American Express", initials: "AMEX", className: "brand-amex", domain: "americanexpress.com" },
+  { id: "hipercard", name: "Hipercard", initials: "HC", className: "brand-hipercard", domain: "hipercard.com.br" },
+  { id: "other", name: "Outra bandeira", initials: "CC", className: "brand-other", domain: "" },
+];
 
 const defaultCategories = [
   { id: "cat-salary", name: "Salario", type: "income", locked: true },
@@ -32,6 +55,8 @@ const els = {
   sidebarToggle: document.querySelector("#sidebarToggle"),
   sidebarClose: document.querySelector("#sidebarClose"),
   sidebarBackdrop: document.querySelector("#sidebarBackdrop"),
+  themeToggle: document.querySelector("#themeToggle"),
+  themeToggleLabel: document.querySelector("#themeToggleLabel"),
   monthPicker: document.querySelector("#monthPicker"),
   dashboardMonth: document.querySelector("#dashboardMonth"),
   metricIncome: document.querySelector("#metricIncome"),
@@ -45,9 +70,9 @@ const els = {
   recentActivity: document.querySelector("#recentActivity"),
   incomeForm: document.querySelector("#incomeForm"),
   expenseForm: document.querySelector("#expenseForm"),
-  cardForm: document.querySelector("#cardForm"),
   purchaseForm: document.querySelector("#purchaseForm"),
   categoryForm: document.querySelector("#categoryForm"),
+  newCardButton: document.querySelector("#newCardButton"),
   incomeList: document.querySelector("#incomeList"),
   expenseList: document.querySelector("#expenseList"),
   cardList: document.querySelector("#cardList"),
@@ -57,18 +82,18 @@ const els = {
   expenseListTotal: document.querySelector("#expenseListTotal"),
   purchaseListTotal: document.querySelector("#purchaseListTotal"),
   installmentPreview: document.querySelector("#installmentPreview"),
-  cardFormTitle: document.querySelector("#cardFormTitle"),
-  cancelCardEdit: document.querySelector("#cancelCardEdit"),
 };
 
 let state = loadState();
 let selectedMonth = getMonthKey(new Date());
 let editingCardId = null;
+let isCreatingCard = false;
 
 init();
 registerServiceWorker();
 
 function init() {
+  applyTheme(localStorage.getItem(THEME_STORAGE_KEY) || "light");
   els.monthPicker.value = selectedMonth;
   setDefaultDates();
   bindEvents();
@@ -86,6 +111,7 @@ function bindEvents() {
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") closeSidebar();
   });
+  els.themeToggle.addEventListener("click", toggleTheme);
 
   document.querySelector("#prevMonth").addEventListener("click", () => shiftMonth(-1));
   document.querySelector("#nextMonth").addEventListener("click", () => shiftMonth(1));
@@ -96,8 +122,10 @@ function bindEvents() {
 
   els.incomeForm.addEventListener("submit", addIncome);
   els.expenseForm.addEventListener("submit", addExpense);
-  els.cardForm.addEventListener("submit", addCard);
-  els.cancelCardEdit.addEventListener("click", cancelCardEdit);
+  els.newCardButton.addEventListener("click", startCardCreate);
+  els.cardList.addEventListener("submit", saveCardForm);
+  els.cardList.addEventListener("input", handleCardFormInput);
+  els.cardList.addEventListener("change", handleCardFormInput);
   els.purchaseForm.addEventListener("submit", addPurchase);
   els.categoryForm.addEventListener("submit", addCategory);
 
@@ -129,6 +157,20 @@ function openSidebar() {
 function closeSidebar() {
   document.body.classList.remove("sidebar-open");
   els.sidebarToggle.setAttribute("aria-expanded", "false");
+}
+
+function toggleTheme() {
+  const nextTheme = document.body.dataset.theme === "dark" ? "light" : "dark";
+  applyTheme(nextTheme);
+}
+
+function applyTheme(theme) {
+  const safeTheme = theme === "dark" ? "dark" : "light";
+  document.body.dataset.theme = safeTheme;
+  localStorage.setItem(THEME_STORAGE_KEY, safeTheme);
+  els.themeToggle.setAttribute("aria-pressed", String(safeTheme === "dark"));
+  els.themeToggleLabel.textContent = safeTheme === "dark" ? "Tema claro" : "Tema escuro";
+  document.querySelector("meta[name='theme-color']")?.setAttribute("content", safeTheme === "dark" ? "#191919" : "#20785f");
 }
 
 function shiftMonth(direction) {
@@ -170,19 +212,24 @@ function addExpense(event) {
   render();
 }
 
-function addCard(event) {
+function saveCardForm(event) {
   event.preventDefault();
-  const form = new FormData(els.cardForm);
+  const sourceForm = event.target.closest("[data-card-form]");
+  if (!sourceForm) return;
+  const form = new FormData(sourceForm);
+  const cardId = form.get("id");
   const cardData = {
-    id: editingCardId || createId(),
+    id: cardId || createId(),
+    bankId: form.get("bankId"),
+    brandId: form.get("brandId"),
     name: cleanText(form.get("name")),
     limitTotal: toMoney(form.get("limitTotal")),
     closingDay: clampDayInput(form.get("closingDay")),
     dueDay: clampDayInput(form.get("dueDay")),
   };
 
-  if (editingCardId) {
-    state.cards = state.cards.map((card) => (card.id === editingCardId ? cardData : card));
+  if (cardId) {
+    state.cards = state.cards.map((card) => (card.id === cardId ? cardData : card));
   } else {
     state.cards.push(cardData);
   }
@@ -260,6 +307,10 @@ function handleDocumentClick(event) {
     startCardEdit(id);
     return;
   }
+  if (button.dataset.action === "cancel-card-form") {
+    cancelCardEdit();
+    return;
+  }
   if (button.dataset.action === "delete-category") {
     const category = state.categories.find((item) => item.id === id);
     if (category?.locked) return;
@@ -274,20 +325,22 @@ function handleDocumentClick(event) {
   render();
 }
 
+function startCardCreate() {
+  isCreatingCard = true;
+  editingCardId = null;
+  switchView("cards");
+  renderCards();
+  scrollActiveCardForm();
+}
+
 function startCardEdit(id) {
   const card = state.cards.find((item) => item.id === id);
   if (!card) return;
+  isCreatingCard = false;
   editingCardId = id;
-  els.cardForm.elements.id.value = card.id;
-  els.cardForm.elements.name.value = card.name;
-  els.cardForm.elements.limitTotal.value = card.limitTotal;
-  els.cardForm.elements.closingDay.value = card.closingDay;
-  els.cardForm.elements.dueDay.value = card.dueDay;
-  els.cardFormTitle.textContent = "Editar cartao";
-  els.cardForm.querySelector("button[type='submit']").textContent = "Salvar alteracoes";
-  els.cancelCardEdit.classList.remove("hidden");
   switchView("cards");
-  els.cardForm.scrollIntoView({ behavior: "smooth", block: "start" });
+  renderCards();
+  scrollActiveCardForm();
 }
 
 function cancelCardEdit() {
@@ -297,13 +350,20 @@ function cancelCardEdit() {
 
 function resetCardForm() {
   editingCardId = null;
-  els.cardForm.reset();
-  els.cardForm.elements.id.value = "";
-  els.cardForm.elements.closingDay.value = "10";
-  els.cardForm.elements.dueDay.value = "20";
-  els.cardFormTitle.textContent = "Novo cartao";
-  els.cardForm.querySelector("button[type='submit']").textContent = "Salvar cartao";
-  els.cancelCardEdit.classList.add("hidden");
+  isCreatingCard = false;
+}
+
+function scrollActiveCardForm() {
+  requestAnimationFrame(() => {
+    document.querySelector("[data-card-form]")?.scrollIntoView({ behavior: "smooth", block: "center" });
+  });
+}
+
+function handleCardFormInput(event) {
+  if (!["bankId", "brandId"].includes(event.target.name)) return;
+  const form = event.target.closest("[data-card-form]");
+  if (!form) return;
+  updateInlineCardPreview(form);
 }
 
 function render() {
@@ -341,9 +401,13 @@ function renderInvoiceOverview(summary) {
     return `
       <article class="invoice-row">
         <div class="invoice-top">
-          <div>
-            <strong>${escapeHtml(card.name)}</strong>
-            <span>Fecha dia ${card.closingDay} - vence dia ${card.dueDay}</span>
+          <div class="card-title-block">
+            <div class="card-identity">${cardIconPair(card, "small")}</div>
+            <div>
+              <strong>${escapeHtml(card.name)}</strong>
+              <span>${escapeHtml(getBankName(card.bankId))} - ${escapeHtml(getBrandName(card.brandId))}</span>
+              <span>Fecha dia ${card.closingDay} - vence dia ${card.dueDay}</span>
+            </div>
           </div>
           <strong class="amount-card">${BRL.format(total)}</strong>
         </div>
@@ -372,7 +436,13 @@ function renderDueList(summary) {
     ? dues.map((item) => `
         <article class="due-row">
           <div class="due-top">
-            <strong>${escapeHtml(item.card.name)}</strong>
+            <div class="card-title-block">
+              <div class="card-identity">${cardIconPair(item.card, "small")}</div>
+              <div>
+                <strong>${escapeHtml(item.card.name)}</strong>
+                <span>${escapeHtml(getBankName(item.card.bankId))} - ${escapeHtml(getBrandName(item.card.brandId))}</span>
+              </div>
+            </div>
             <strong class="amount-card">${BRL.format(item.total)}</strong>
           </div>
           <span>Vencimento em ${formatDate(item.dueDate)}</span>
@@ -455,45 +525,58 @@ function renderExpenses() {
 }
 
 function renderCards() {
-  els.cardList.innerHTML = state.cards.length
-    ? state.cards.map((card) => {
-        const invoice = getCardInvoiceTotal(card.id, selectedMonth);
-        const openAmount = getCardOpenAmount(card.id, selectedMonth);
-        const available = getCardAvailableLimit(card.id, selectedMonth);
-        return `
-          <article class="card-row">
-            <div class="card-top">
-              <div>
-                <strong>${escapeHtml(card.name)}</strong>
-                <span>Fecha dia ${card.closingDay} - vence dia ${card.dueDay}</span>
-              </div>
-              <div class="card-actions">
-                <button class="small-action" type="button" data-action="edit-card" data-id="${card.id}">Editar</button>
-                <button class="delete-button" type="button" data-action="delete-card" data-id="${card.id}" aria-label="Excluir cartao">&times;</button>
-              </div>
+  const rows = [];
+  if (isCreatingCard) rows.push(cardFormRow());
+
+  state.cards.forEach((card) => {
+    if (editingCardId === card.id) {
+      rows.push(cardFormRow(card));
+      return;
+    }
+
+    const invoice = getCardInvoiceTotal(card.id, selectedMonth);
+    const openAmount = getCardOpenAmount(card.id, selectedMonth);
+    const available = getCardAvailableLimit(card.id, selectedMonth);
+    rows.push(`
+      <article class="card-row">
+        <div class="card-top">
+          <div class="card-title-block">
+            <div class="card-identity">${cardIconPair(card)}</div>
+            <div>
+              <strong>${escapeHtml(card.name)}</strong>
+              <span>${escapeHtml(getBankName(card.bankId))} - ${escapeHtml(getBrandName(card.brandId))}</span>
+              <span>Fecha dia ${card.closingDay} - vence dia ${card.dueDay}</span>
             </div>
-            <div class="card-kpis">
-              <div>
-                <span>Fatura atual</span>
-                <strong>${BRL.format(invoice)}</strong>
-              </div>
-              <div>
-                <span>Limite total</span>
-                <strong>${BRL.format(card.limitTotal)}</strong>
-              </div>
-              <div>
-                <span>Comprometido</span>
-                <strong>${BRL.format(openAmount)}</strong>
-              </div>
-              <div>
-                <span>Disponivel</span>
-                <strong>${BRL.format(available)}</strong>
-              </div>
-            </div>
-          </article>
-        `;
-      }).join("")
-    : emptyState("Cadastre seu primeiro cartao.");
+          </div>
+          <div class="card-actions">
+            <button class="small-action" type="button" data-action="edit-card" data-id="${card.id}">Editar</button>
+            <button class="delete-button" type="button" data-action="delete-card" data-id="${card.id}" aria-label="Excluir cartao">&times;</button>
+          </div>
+        </div>
+        <div class="card-kpis">
+          <div>
+            <span>Fatura atual</span>
+            <strong>${BRL.format(invoice)}</strong>
+          </div>
+          <div>
+            <span>Limite total</span>
+            <strong>${BRL.format(card.limitTotal)}</strong>
+          </div>
+          <div>
+            <span>Comprometido</span>
+            <strong>${BRL.format(openAmount)}</strong>
+          </div>
+          <div>
+            <span>Disponivel</span>
+            <strong>${BRL.format(available)}</strong>
+          </div>
+        </div>
+      </article>
+    `);
+  });
+
+  els.newCardButton.disabled = isCreatingCard;
+  els.cardList.innerHTML = rows.length ? rows.join("") : emptyState("Cadastre seu primeiro cartao.");
 }
 
 function renderPurchases() {
@@ -511,6 +594,56 @@ function renderPurchases() {
         );
       }).join("")
     : emptyState("Nenhuma parcela cai neste mes.");
+}
+
+function cardFormRow(card = null) {
+  const bankId = card?.bankId || "nubank";
+  const brandId = card?.brandId || "mastercard";
+  const isEdit = Boolean(card);
+  return `
+    <form class="card-row card-inline-form" data-card-form="${isEdit ? "edit" : "new"}">
+      <input name="id" type="hidden" value="${card ? escapeHtml(card.id) : ""}" />
+      <div class="form-title-row">
+        <h2>${isEdit ? "Editar cartao" : "Novo cartao"}</h2>
+        <button class="text-button" type="button" data-action="cancel-card-form">Cancelar</button>
+      </div>
+      <div class="two-columns">
+        <label>
+          Banco
+          <select name="bankId" required>${optionsForBanks(bankId)}</select>
+        </label>
+        <label>
+          Bandeira
+          <select name="brandId" required>${optionsForBrands(brandId)}</select>
+        </label>
+      </div>
+      <div class="card-identity-preview" data-card-preview>
+        ${cardIdentityPreviewHtml(bankId, brandId)}
+      </div>
+      <label>
+        Apelido do cartao
+        <input name="name" type="text" placeholder="Ex.: Principal, compras online" value="${escapeHtml(card?.name || "")}" required />
+      </label>
+      <label>
+        Limite total
+        <input name="limitTotal" type="number" min="1" step="0.01" placeholder="0,00" value="${card?.limitTotal || ""}" required />
+      </label>
+      <div class="two-columns">
+        <label>
+          Fechamento
+          <input name="closingDay" type="number" min="1" max="31" step="1" value="${card?.closingDay || 10}" required />
+        </label>
+        <label>
+          Vencimento
+          <input name="dueDay" type="number" min="1" max="31" step="1" value="${card?.dueDay || 20}" required />
+        </label>
+      </div>
+      <div class="form-actions">
+        <button class="secondary-form-button" type="button" data-action="cancel-card-form">Cancelar</button>
+        <button class="primary-button" type="submit">${isEdit ? "Salvar alteracoes" : "Salvar cartao"}</button>
+      </div>
+    </form>
+  `;
 }
 
 function renderCategories() {
@@ -536,9 +669,24 @@ function renderCategoryOptions() {
   els.expenseForm.elements.categoryId.innerHTML = expenseOptions;
   els.purchaseForm.elements.categoryId.innerHTML = expenseOptions;
   els.purchaseForm.elements.cardId.innerHTML = state.cards.length
-    ? state.cards.map((card) => `<option value="${card.id}">${escapeHtml(card.name)}</option>`).join("")
+    ? state.cards.map((card) => `<option value="${card.id}">${escapeHtml(cardOptionLabel(card))}</option>`).join("")
     : `<option value="">Cadastre um cartao</option>`;
   els.purchaseForm.querySelector("button[type='submit']").disabled = !state.cards.length;
+}
+
+function updateInlineCardPreview(form) {
+  const bankId = form.elements.bankId.value || "nubank";
+  const brandId = form.elements.brandId.value || "mastercard";
+  const preview = form.querySelector("[data-card-preview]");
+  if (!preview) return;
+  preview.innerHTML = cardIdentityPreviewHtml(bankId, brandId);
+}
+
+function cardIdentityPreviewHtml(bankId, brandId) {
+  return `
+    <div class="card-identity">${cardIconPair({ bankId, brandId })}</div>
+    <span>${escapeHtml(getBankName(bankId))} - ${escapeHtml(getBrandName(brandId))}</span>
+  `;
 }
 
 function renderInstallmentPreview() {
@@ -701,6 +849,68 @@ function optionsForCategories(type) {
     .join("");
 }
 
+function optionsForBanks(selectedId = "") {
+  return bankOptions
+    .map((bank) => `<option value="${bank.id}" ${bank.id === selectedId ? "selected" : ""}>${escapeHtml(bank.name)}</option>`)
+    .join("");
+}
+
+function optionsForBrands(selectedId = "") {
+  return brandOptions
+    .map((brand) => `<option value="${brand.id}" ${brand.id === selectedId ? "selected" : ""}>${escapeHtml(brand.name)}</option>`)
+    .join("");
+}
+
+function cardIconPair(card, size = "") {
+  return `${bankIcon(card.bankId, size)}${brandIcon(card.brandId, size)}`;
+}
+
+function bankIcon(id, size = "") {
+  const bank = getBankOption(id);
+  return logoIcon(bank, size);
+}
+
+function brandIcon(id, size = "") {
+  const brand = getBrandOption(id);
+  return logoIcon(brand, size);
+}
+
+function logoIcon(item, size = "") {
+  const src = item.domain ? faviconUrl(item.domain) : "";
+  const image = src
+    ? `<img src="${src}" alt="${escapeHtml(item.name)}" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentElement.dataset.fallback='1';" />`
+    : "";
+  return `
+    <span class="entity-icon logo-tile ${size} ${item.className}" title="${escapeHtml(item.name)}" data-initials="${escapeHtml(item.initials)}" ${src ? "" : "data-fallback=\"1\""}>
+      ${image}
+    </span>
+  `;
+}
+
+function faviconUrl(domain) {
+  return `https://www.google.com/s2/favicons?sz=128&domain=${encodeURIComponent(domain)}`;
+}
+
+function getBankOption(id) {
+  return bankOptions.find((bank) => bank.id === id) || bankOptions.find((bank) => bank.id === "other");
+}
+
+function getBrandOption(id) {
+  return brandOptions.find((brand) => brand.id === id) || brandOptions.find((brand) => brand.id === "other");
+}
+
+function getBankName(id) {
+  return getBankOption(id).name;
+}
+
+function getBrandName(id) {
+  return getBrandOption(id).name;
+}
+
+function cardOptionLabel(card) {
+  return `${card.name} - ${getBankName(card.bankId)} - ${getBrandName(card.brandId)}`;
+}
+
 function isCategoryInUse(id) {
   return [
     ...state.incomes.map((item) => item.categoryId),
@@ -722,10 +932,6 @@ function setDefaultDates() {
   els.incomeForm.elements.date.value = today;
   els.expenseForm.elements.date.value = today;
   els.purchaseForm.elements.date.value = today;
-  if (!editingCardId) {
-    els.cardForm.elements.closingDay.value = "10";
-    els.cardForm.elements.dueDay.value = "20";
-  }
   els.purchaseForm.elements.installments.value = "1";
 }
 
@@ -830,6 +1036,12 @@ function normalizeState(input) {
     if (!normalized.categories.some((item) => item.id === category.id)) normalized.categories.push(category);
   });
 
+  normalized.cards = normalized.cards.map((card) => ({
+    ...card,
+    bankId: card.bankId || inferBankId(card.name),
+    brandId: card.brandId || "mastercard",
+  }));
+
   return normalized;
 }
 
@@ -849,8 +1061,8 @@ function createSeedData() {
       { id: createId(), description: "Transporte", amount: 142.4, date: dateInMonth(month, 15), categoryId: "cat-transport", paymentMethod: "Pix" },
     ],
     cards: [
-      { id: cardOne, name: "Nubank", limitTotal: 4200, closingDay: 10, dueDay: 18 },
-      { id: cardTwo, name: "Inter", limitTotal: 2800, closingDay: 25, dueDay: 5 },
+      { id: cardOne, bankId: "nubank", brandId: "mastercard", name: "Nubank principal", limitTotal: 4200, closingDay: 10, dueDay: 18 },
+      { id: cardTwo, bankId: "inter", brandId: "visa", name: "Inter compras", limitTotal: 2800, closingDay: 25, dueDay: 5 },
     ],
     purchases: [
       { id: createId(), description: "Curso online", amount: 900, date: dateInMonth(month, 4), categoryId: "cat-study", cardId: cardOne, installments: 3 },
@@ -858,6 +1070,20 @@ function createSeedData() {
       { id: createId(), description: "Jantar", amount: 184.5, date: dateInMonth(month, 16), categoryId: "cat-leisure", cardId: cardTwo, installments: 1 },
     ],
   });
+}
+
+function inferBankId(name) {
+  const value = String(name || "").toLowerCase();
+  if (value.includes("nubank")) return "nubank";
+  if (value.includes("inter")) return "inter";
+  if (value.includes("itau")) return "itau";
+  if (value.includes("bradesco")) return "bradesco";
+  if (value.includes("santander")) return "santander";
+  if (value.includes("caixa")) return "caixa";
+  if (value.includes("c6")) return "c6";
+  if (value.includes("picpay")) return "picpay";
+  if (value.includes("brasil")) return "bb";
+  return "other";
 }
 
 function dateInMonth(month, day) {
