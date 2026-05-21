@@ -14,7 +14,9 @@ Para instalar no celular, publique a pasta em um endereco HTTPS, como GitHub Pag
 ## O que ja existe
 
 - Selecao de mes e ano.
-- Menu lateral recolhivel em estilo Notion.
+- Interface mobile-first inspirada em app financeiro.
+- Navegacao inferior com Inicio, Lancamentos, Cartoes, SMS e Perfil.
+- Menu lateral recolhivel em estilo Notion para atalhos extras.
 - Alternancia entre tema claro e escuro.
 - Dashboard com receitas, despesas a vista, cartoes, saldo restante e disponivel.
 - Cadastro e exclusao de receitas.

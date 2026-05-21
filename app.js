@@ -57,6 +57,10 @@ const els = {
   sidebarBackdrop: document.querySelector("#sidebarBackdrop"),
   themeToggle: document.querySelector("#themeToggle"),
   themeToggleLabel: document.querySelector("#themeToggleLabel"),
+  themeToggleProfile: document.querySelector("#themeToggleProfile"),
+  themeProfileLabel: document.querySelector("#themeProfileLabel"),
+  appTitle: document.querySelector("#appTitle"),
+  monthStrip: document.querySelector("#monthStrip"),
   monthPicker: document.querySelector("#monthPicker"),
   dashboardMonth: document.querySelector("#dashboardMonth"),
   metricIncome: document.querySelector("#metricIncome"),
@@ -68,6 +72,9 @@ const els = {
   dueList: document.querySelector("#dueList"),
   categorySummary: document.querySelector("#categorySummary"),
   recentActivity: document.querySelector("#recentActivity"),
+  monthChart: document.querySelector("#monthChart"),
+  transactionMobileList: document.querySelector("#transactionMobileList"),
+  smsList: document.querySelector("#smsList"),
   incomeForm: document.querySelector("#incomeForm"),
   expenseForm: document.querySelector("#expenseForm"),
   purchaseForm: document.querySelector("#purchaseForm"),
@@ -82,6 +89,7 @@ const els = {
   expenseListTotal: document.querySelector("#expenseListTotal"),
   purchaseListTotal: document.querySelector("#purchaseListTotal"),
   installmentPreview: document.querySelector("#installmentPreview"),
+  exportDataProfile: document.querySelector("#exportDataProfile"),
 };
 
 let state = loadState();
@@ -94,6 +102,8 @@ registerServiceWorker();
 
 function init() {
   applyTheme(localStorage.getItem(THEME_STORAGE_KEY) || "light");
+  document.body.dataset.view = "dashboard";
+  updateScreenTitle("dashboard");
   els.monthPicker.value = selectedMonth;
   setDefaultDates();
   bindEvents();
@@ -112,6 +122,7 @@ function bindEvents() {
     if (event.key === "Escape") closeSidebar();
   });
   els.themeToggle.addEventListener("click", toggleTheme);
+  els.themeToggleProfile.addEventListener("click", toggleTheme);
 
   document.querySelector("#prevMonth").addEventListener("click", () => shiftMonth(-1));
   document.querySelector("#nextMonth").addEventListener("click", () => shiftMonth(1));
@@ -136,6 +147,7 @@ function bindEvents() {
 
   document.addEventListener("click", handleDocumentClick);
   document.querySelector("#exportData").addEventListener("click", exportData);
+  els.exportDataProfile.addEventListener("click", exportData);
   document.querySelector("#importData").addEventListener("change", importData);
 }
 
@@ -146,7 +158,24 @@ function switchView(viewName) {
   document.querySelectorAll(".nav-tab").forEach((tab) => {
     tab.classList.toggle("active", tab.dataset.view === viewName);
   });
+  document.body.dataset.view = viewName;
+  updateScreenTitle(viewName);
   closeSidebar();
+}
+
+function updateScreenTitle(viewName) {
+  const titles = {
+    dashboard: "Controle Financeiro",
+    transactions: "Lancamentos",
+    cards: "Cartoes",
+    sms: "SMS",
+    profile: "Perfil",
+    income: "Nova receita",
+    expenses: "Nova despesa",
+    categories: "Categorias",
+  };
+  els.appTitle.textContent = titles[viewName] || "Controle Financeiro";
+  els.monthStrip.classList.toggle("hidden", ["cards", "sms", "profile", "categories"].includes(viewName));
 }
 
 function openSidebar() {
@@ -170,6 +199,7 @@ function applyTheme(theme) {
   localStorage.setItem(THEME_STORAGE_KEY, safeTheme);
   els.themeToggle.setAttribute("aria-pressed", String(safeTheme === "dark"));
   els.themeToggleLabel.textContent = safeTheme === "dark" ? "Tema claro" : "Tema escuro";
+  els.themeProfileLabel.textContent = safeTheme === "dark" ? "Escuro" : "Claro";
   document.querySelector("meta[name='theme-color']")?.setAttribute("content", safeTheme === "dark" ? "#191919" : "#20785f");
 }
 
@@ -307,6 +337,10 @@ function handleDocumentClick(event) {
     startCardEdit(id);
     return;
   }
+  if (button.dataset.action === "new-card") {
+    startCardCreate();
+    return;
+  }
   if (button.dataset.action === "cancel-card-form") {
     cancelCardEdit();
     return;
@@ -370,11 +404,14 @@ function render() {
   state = normalizeState(state);
   renderCategoryOptions();
   renderDashboard();
+  renderMonthChart();
+  renderTransactionsMobile();
   renderIncome();
   renderExpenses();
   renderCards();
   renderPurchases();
   renderCategories();
+  renderSmsList();
   renderInstallmentPreview();
 }
 
@@ -475,6 +512,29 @@ function renderCategorySummary(summary) {
     : emptyState("Sem gastos registrados neste mes.");
 }
 
+function renderMonthChart() {
+  const [year, monthNumber] = selectedMonth.split("-").map(Number);
+  const days = new Date(year, monthNumber, 0).getDate();
+  const incomes = getIncomesForMonth(selectedMonth);
+  const expenses = [
+    ...getCashExpensesForMonth(selectedMonth).map((item) => ({ date: item.date, amount: item.amount })),
+    ...getInstallmentsForMonth(selectedMonth).map((item) => ({ date: item.dueDate, amount: item.amount })),
+  ];
+  const max = Math.max(1, ...incomes.map((item) => item.amount), ...expenses.map((item) => item.amount));
+  const bars = Array.from({ length: days }, (_, index) => {
+    const day = index + 1;
+    const income = sumAmounts(incomes.filter((item) => parseDateParts(item.date).day === day).map((item) => item.amount));
+    const expense = sumAmounts(expenses.filter((item) => parseDateParts(item.date).day === day).map((item) => item.amount));
+    return `
+      <div class="chart-day">
+        <span class="bar income" style="height:${Math.max(8, (income / max) * 92)}%"></span>
+        <span class="bar expense" style="height:${Math.max(8, (expense / max) * 92)}%"></span>
+      </div>
+    `;
+  }).join("");
+  els.monthChart.innerHTML = bars;
+}
+
 function renderRecentActivity(summary) {
   const recent = [
     ...summary.incomes.map((item) => ({
@@ -508,6 +568,51 @@ function renderRecentActivity(summary) {
     : emptyState("Sem lancamentos neste mes.");
 }
 
+function renderTransactionsMobile() {
+  const summary = getMonthlySummary(selectedMonth);
+  const items = [
+    ...summary.incomes.map((item) => ({
+      title: item.description,
+      meta: `${formatDate(item.date)} - Receita`,
+      amount: item.amount,
+      kind: "income",
+      icon: "up",
+      date: item.date,
+    })),
+    ...summary.cashExpenses.map((item) => ({
+      title: item.description,
+      meta: `${formatDate(item.date)} - ${getCategoryName(item.categoryId)}`,
+      amount: item.amount,
+      kind: "expense",
+      icon: item.paymentMethod,
+      date: item.date,
+    })),
+    ...summary.cardInstallments.map((item) => ({
+      title: item.purchase.description,
+      meta: `${formatDate(item.dueDate)} - Cartao ${getCardName(item.purchase.cardId)}`,
+      amount: item.amount,
+      kind: "card",
+      icon: "card",
+      date: item.dueDate,
+      badge: item.totalInstallments > 1 ? `${item.number}/${item.totalInstallments}` : "",
+    })),
+  ].sort((a, b) => b.date.localeCompare(a.date));
+
+  els.transactionMobileList.innerHTML = items.length
+    ? items.map((item) => `
+        <article class="mobile-transaction-row">
+          <span class="transaction-icon ${item.kind}">${transactionIconText(item)}</span>
+          <div>
+            <strong>${escapeHtml(item.title)}</strong>
+            <span>${escapeHtml(item.meta)}</span>
+            ${item.badge ? `<em>${escapeHtml(item.badge)}</em>` : ""}
+          </div>
+          <strong class="${item.kind === "income" ? "amount-income" : "amount-expense"}">${item.kind === "income" ? "+" : "-"} ${BRL.format(item.amount)}</strong>
+        </article>
+      `).join("")
+    : emptyState("Sem lancamentos neste mes.");
+}
+
 function renderIncome() {
   const items = getIncomesForMonth(selectedMonth).sort((a, b) => b.date.localeCompare(a.date));
   els.incomeListTotal.textContent = BRL.format(sum(items));
@@ -528,7 +633,7 @@ function renderCards() {
   const rows = [];
   if (isCreatingCard) rows.push(cardFormRow());
 
-  state.cards.forEach((card) => {
+  state.cards.forEach((card, index) => {
     if (editingCardId === card.id) {
       rows.push(cardFormRow(card));
       return;
@@ -538,7 +643,7 @@ function renderCards() {
     const openAmount = getCardOpenAmount(card.id, selectedMonth);
     const available = getCardAvailableLimit(card.id, selectedMonth);
     rows.push(`
-      <article class="card-row">
+      <article class="card-row card-display ${index === 0 ? "primary-card" : ""}">
         <div class="card-top">
           <div class="card-title-block">
             <div class="card-identity">${cardIconPair(card)}</div>
@@ -576,6 +681,9 @@ function renderCards() {
   });
 
   els.newCardButton.disabled = isCreatingCard;
+  if (!isCreatingCard) {
+    rows.push(`<button class="add-card-row" type="button" data-action="new-card">Adicionar cartao</button>`);
+  }
   els.cardList.innerHTML = rows.length ? rows.join("") : emptyState("Cadastre seu primeiro cartao.");
 }
 
@@ -594,6 +702,45 @@ function renderPurchases() {
         );
       }).join("")
     : emptyState("Nenhuma parcela cai neste mes.");
+}
+
+function renderSmsList() {
+  const samples = [
+    { bankId: "nubank", title: "Nubank", text: "Compra aprovada no cartao final 1234 em MERCADO EXTRA", amount: 187.4, meta: "Cartao final 1234", category: "Alimentacao" },
+    { bankId: "inter", title: "Inter", text: "Pix enviado para JOAO SILVA", amount: 80, meta: "Pix", category: "Transferencia" },
+    { bankId: "bb", title: "Banco do Brasil", text: "Compra aprovada em UBER", amount: 28.5, meta: "Cartao final 5678", category: "Transporte" },
+    { bankId: "nubank", title: "Nubank", text: "Compra aprovada em NETFLIX.COM", amount: 39.9, meta: "Cartao final 1234", category: "Assinaturas" },
+  ];
+
+  els.smsList.innerHTML = samples.map((item) => `
+    <article class="sms-row">
+      <div class="sms-row-head">
+        ${bankIcon(item.bankId)}
+        <div>
+          <strong>${escapeHtml(item.title)}</strong>
+          <p>${escapeHtml(item.text)}</p>
+        </div>
+      </div>
+      <div class="sms-detected">
+        <div>
+          <span>Valor identificado</span>
+          <strong>${BRL.format(item.amount)}</strong>
+        </div>
+        <div>
+          <span>Tipo</span>
+          <strong>${escapeHtml(item.meta)}</strong>
+        </div>
+        <div>
+          <span>Categoria sugerida</span>
+          <strong>${escapeHtml(item.category)}</strong>
+        </div>
+      </div>
+      <div class="sms-actions">
+        <button type="button">Confirmar</button>
+        <button type="button">Editar</button>
+      </div>
+    </article>
+  `).join("");
 }
 
 function cardFormRow(card = null) {
@@ -738,6 +885,13 @@ function compactActivityRow(item) {
       <span>${escapeHtml(item.meta)}</span>
     </article>
   `;
+}
+
+function transactionIconText(item) {
+  if (item.kind === "income") return "A";
+  if (item.kind === "card") return "C";
+  const label = String(item.icon || "").slice(0, 1).toUpperCase();
+  return label || "D";
 }
 
 function getMonthlySummary(month) {

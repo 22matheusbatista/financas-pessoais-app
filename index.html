@@ -52,87 +52,110 @@
       <section class="workspace">
         <header class="topbar">
           <div class="title-row">
-            <button class="menu-button" type="button" id="sidebarToggle" aria-label="Abrir menu" aria-expanded="false" aria-controls="sidebar">
-              <span></span>
-              <span></span>
-              <span></span>
-            </button>
             <div>
               <p class="eyebrow">Controle mensal</p>
-              <h1>Visao financeira</h1>
+              <h1 id="appTitle">Controle Financeiro</h1>
             </div>
           </div>
+          <button class="avatar-button" type="button" id="sidebarToggle" aria-label="Abrir perfil" aria-expanded="false" aria-controls="sidebar">
+            <span>MF</span>
+          </button>
+        </header>
+
+        <div class="month-strip" id="monthStrip" aria-label="Selecionar mes">
           <div class="month-control" aria-label="Selecionar mes">
             <button class="icon-button" type="button" id="prevMonth" aria-label="Mes anterior">&lsaquo;</button>
             <input id="monthPicker" type="month" />
             <button class="icon-button" type="button" id="nextMonth" aria-label="Proximo mes">&rsaquo;</button>
           </div>
-        </header>
+        </div>
 
         <section class="view active" id="dashboard">
-          <section class="hero-band" aria-labelledby="dashboardMonth">
+          <section class="balance-card" aria-labelledby="dashboardMonth">
             <div>
-              <p class="eyebrow">Mes selecionado</p>
-              <h2 id="dashboardMonth">Maio de 2026</h2>
-            </div>
-            <button class="primary-button compact" type="button" data-view-target="income">Nova receita</button>
-          </section>
-
-          <section class="metric-grid" aria-label="Resumo mensal">
-            <article class="metric-card income-tone">
-              <span>Receitas</span>
-              <strong id="metricIncome">R$ 0,00</strong>
-            </article>
-            <article class="metric-card expense-tone">
-              <span>Despesas a vista</span>
-              <strong id="metricExpenses">R$ 0,00</strong>
-            </article>
-            <article class="metric-card card-tone">
-              <span>Cartoes</span>
-              <strong id="metricCards">R$ 0,00</strong>
-            </article>
-            <article class="metric-card balance-tone">
-              <span>Saldo restante</span>
-              <strong id="metricBalance">R$ 0,00</strong>
-            </article>
-            <article class="metric-card available-tone">
-              <span>Disponivel para gastar</span>
+              <p>Saldo disponivel</p>
               <strong id="metricAvailable">R$ 0,00</strong>
-            </article>
+            </div>
+            <span id="dashboardMonth">Maio de 2026</span>
+            <span class="visually-hidden" id="metricBalance">R$ 0,00</span>
+            <div class="balance-breakdown">
+              <article>
+                <span class="round-indicator income">A</span>
+                <span>Receitas</span>
+                <strong id="metricIncome">R$ 0,00</strong>
+              </article>
+              <article>
+                <span class="round-indicator expense">B</span>
+                <span>Despesas</span>
+                <strong id="metricExpenses">R$ 0,00</strong>
+              </article>
+              <article>
+                <span class="round-indicator card">C</span>
+                <span>Cartoes</span>
+                <strong id="metricCards">R$ 0,00</strong>
+              </article>
+            </div>
           </section>
 
-          <section class="dashboard-grid">
-            <section class="panel">
-              <div class="panel-heading">
-                <h2>Faturas do mes</h2>
-                <button class="text-button" type="button" data-view-target="cards">Ver cartoes</button>
-              </div>
-              <div id="invoiceOverview" class="invoice-list"></div>
-            </section>
-
-            <section class="panel">
-              <div class="panel-heading">
-                <h2>Proximos vencimentos</h2>
-              </div>
-              <div id="dueList" class="compact-list"></div>
-            </section>
+          <section class="panel chart-panel">
+            <div class="panel-heading">
+              <h2>Resumo do mes</h2>
+            </div>
+            <div id="monthChart" class="month-chart"></div>
+            <div class="chart-legend">
+              <span><i class="legend-income"></i>Receitas</span>
+              <span><i class="legend-expense"></i>Despesas</span>
+              <span><i class="legend-line"></i>Media diaria</span>
+            </div>
           </section>
 
-          <section class="dashboard-grid wide-left">
+          <section class="mobile-stack">
             <section class="panel">
               <div class="panel-heading">
                 <h2>Gastos por categoria</h2>
+                <button class="text-button" type="button" data-view-target="transactions">Ver todas</button>
               </div>
               <div id="categorySummary" class="category-summary"></div>
             </section>
 
             <section class="panel">
               <div class="panel-heading">
-                <h2>Ultimos lancamentos</h2>
+                <h2>Proximos vencimentos</h2>
+                <button class="text-button" type="button" data-view-target="cards">Ver todas</button>
               </div>
-              <div id="recentActivity" class="compact-list"></div>
+              <div id="dueList" class="compact-list"></div>
             </section>
           </section>
+
+          <div id="invoiceOverview" class="hidden"></div>
+          <div id="recentActivity" class="hidden"></div>
+        </section>
+
+        <section class="view" id="transactions">
+          <section class="segmented-panel">
+            <button class="segment active" type="button">Todos</button>
+            <button class="segment" type="button">Receitas</button>
+            <button class="segment" type="button">Despesas</button>
+            <button class="segment" type="button">Cartao</button>
+          </section>
+          <label class="search-field">
+            <span></span>
+            <input type="search" placeholder="Buscar lancamentos" />
+          </label>
+          <div class="filter-row">
+            <button type="button">Categoria</button>
+            <button type="button">Pagamento</button>
+            <button type="button">Ordenar</button>
+          </div>
+          <section class="mobile-stack">
+            <section class="panel">
+              <div class="panel-heading">
+                <h2>Lancamentos</h2>
+              </div>
+              <div id="transactionMobileList" class="transaction-mobile-list"></div>
+            </section>
+          </section>
+          <button class="fab-button" type="button" data-view-target="income" aria-label="Novo lancamento">+</button>
         </section>
 
         <section class="view" id="income">
@@ -269,6 +292,28 @@
           </div>
         </section>
 
+        <section class="view" id="sms">
+          <section class="sms-banner">
+            <span></span>
+            <div>
+              <strong>Leitura automatica ativada</strong>
+              <p>Mensagens de bancos e cartoes serao analisadas com sua permissao.</p>
+            </div>
+          </section>
+          <section class="panel">
+            <div class="panel-heading">
+              <h2>Lancamentos pendentes</h2>
+              <span class="count-pill">4</span>
+            </div>
+            <div id="smsList" class="sms-list"></div>
+          </section>
+          <section class="panel privacy-panel">
+            <h2>Regras de privacidade</h2>
+            <p>Voce pode revisar antes de salvar</p>
+            <p>A leitura pode ser desativada a qualquer momento</p>
+          </section>
+        </section>
+
         <section class="view" id="categories">
           <div class="content-grid">
             <form class="panel form-panel" id="categoryForm">
@@ -296,7 +341,48 @@
             </section>
           </div>
         </section>
+
+        <section class="view" id="profile">
+          <section class="profile-card">
+            <div class="avatar-large">MF</div>
+            <h2>Matheus Ferreira</h2>
+            <p>Seu espaco de preferencias do app.</p>
+          </section>
+          <section class="panel settings-list">
+            <button class="setting-row" type="button" id="themeToggleProfile">
+              <span>Alternar tema</span>
+              <strong id="themeProfileLabel">Claro</strong>
+            </button>
+            <button class="setting-row" type="button" id="exportDataProfile">
+              <span>Exportar dados</span>
+              <strong>JSON</strong>
+            </button>
+          </section>
+        </section>
       </section>
+
+      <nav class="bottom-nav" aria-label="Navegacao inferior">
+        <button class="bottom-tab nav-tab active" type="button" data-view="dashboard">
+          <span class="bottom-icon home-icon"></span>
+          <span>Inicio</span>
+        </button>
+        <button class="bottom-tab nav-tab" type="button" data-view="transactions">
+          <span class="bottom-icon list-icon"></span>
+          <span>Lancamentos</span>
+        </button>
+        <button class="bottom-tab nav-tab" type="button" data-view="cards">
+          <span class="bottom-icon card-icon"></span>
+          <span>Cartoes</span>
+        </button>
+        <button class="bottom-tab nav-tab" type="button" data-view="sms">
+          <span class="bottom-icon sms-icon"></span>
+          <span>SMS</span>
+        </button>
+        <button class="bottom-tab nav-tab" type="button" data-view="profile">
+          <span class="bottom-icon user-icon"></span>
+          <span>Perfil</span>
+        </button>
+      </nav>
     </main>
 
     <script src="app.js"></script>
