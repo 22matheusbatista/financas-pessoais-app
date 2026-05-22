@@ -1,6 +1,7 @@
 const BRL = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 const STORAGE_KEY = "personal-finance-mvp-v2";
 const THEME_STORAGE_KEY = "personal-finance-theme";
+const VALUES_HIDDEN_KEY = "personal-finance-values-hidden";
 
 const categoryTypes = {
   income: "Receita",
@@ -60,14 +61,12 @@ const defaultCategories = [
 ];
 
 const els = {
-  sidebarToggle: document.querySelector("#sidebarToggle"),
-  sidebarClose: document.querySelector("#sidebarClose"),
-  sidebarBackdrop: document.querySelector("#sidebarBackdrop"),
   themeToggle: document.querySelector("#themeToggle"),
   themeToggleLabel: document.querySelector("#themeToggleLabel"),
   themeToggleProfile: document.querySelector("#themeToggleProfile"),
   themeProfileLabel: document.querySelector("#themeProfileLabel"),
   appTitle: document.querySelector("#appTitle"),
+  screenSubtitle: document.querySelector("#screenSubtitle"),
   monthStrip: document.querySelector("#monthStrip"),
   monthPicker: document.querySelector("#monthPicker"),
   dashboardMonth: document.querySelector("#dashboardMonth"),
@@ -79,6 +78,8 @@ const els = {
   metricProjectedBalance: document.querySelector("#metricProjectedBalance"),
   metricDailyBudget: document.querySelector("#metricDailyBudget"),
   metricFutureCommitments: document.querySelector("#metricFutureCommitments"),
+  decisionCard: document.querySelector("#decisionCard"),
+  financialCalendar: document.querySelector("#financialCalendar"),
   invoiceOverview: document.querySelector("#invoiceOverview"),
   dueList: document.querySelector("#dueList"),
   categorySummary: document.querySelector("#categorySummary"),
@@ -103,9 +104,19 @@ const els = {
   budgetForm: document.querySelector("#budgetForm"),
   recurringForm: document.querySelector("#recurringForm"),
   newCardButton: document.querySelector("#newCardButton"),
+  newIncomeButton: document.querySelector("#newIncomeButton"),
+  newExpenseButton: document.querySelector("#newExpenseButton"),
+  newPurchaseButton: document.querySelector("#newPurchaseButton"),
+  toggleBudgetForm: document.querySelector("#toggleBudgetForm"),
+  toggleRecurringForm: document.querySelector("#toggleRecurringForm"),
+  globalActionMenu: document.querySelector("#globalActionMenu"),
+  globalMenuPanel: document.querySelector("#globalMenuPanel"),
+  globalMenuToggle: document.querySelector("#globalMenuToggle"),
   incomeList: document.querySelector("#incomeList"),
   expenseList: document.querySelector("#expenseList"),
   cardList: document.querySelector("#cardList"),
+  cardDetailPanel: document.querySelector("#cardDetailPanel"),
+  cardDetailContent: document.querySelector("#cardDetailContent"),
   purchaseList: document.querySelector("#purchaseList"),
   categoryList: document.querySelector("#categoryList"),
   budgetList: document.querySelector("#budgetList"),
@@ -124,7 +135,17 @@ let state = loadState();
 let selectedMonth = getMonthKey(new Date());
 let editingCardId = null;
 let isCreatingCard = false;
+let selectedCardId = null;
+let editingBudgetId = null;
 let toastTimer = null;
+let valuesHidden = localStorage.getItem(VALUES_HIDDEN_KEY) === "true";
+const optionalForms = {
+  income: false,
+  expense: false,
+  purchase: false,
+  budget: false,
+  recurring: false,
+};
 const transactionFilters = {
   kind: "all",
   search: "",
@@ -139,6 +160,7 @@ setupNativeBridge();
 
 function init() {
   applyTheme(localStorage.getItem(THEME_STORAGE_KEY) || "light");
+  document.body.classList.toggle("values-hidden", valuesHidden);
   document.body.dataset.view = "dashboard";
   updateScreenTitle("dashboard");
   els.monthPicker.value = selectedMonth;
@@ -152,13 +174,10 @@ function bindEvents() {
     button.addEventListener("click", () => switchView(button.dataset.view || button.dataset.viewTarget));
   });
 
-  els.sidebarToggle.addEventListener("click", openSidebar);
-  els.sidebarClose.addEventListener("click", closeSidebar);
-  els.sidebarBackdrop.addEventListener("click", closeSidebar);
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") closeSidebar();
+    if (event.key === "Escape") closeGlobalMenu();
   });
-  els.themeToggle.addEventListener("click", toggleTheme);
+  els.themeToggle?.addEventListener("click", toggleTheme);
   els.themeToggleProfile.addEventListener("click", toggleTheme);
 
   document.querySelector("#prevMonth").addEventListener("click", () => shiftMonth(-1));
@@ -191,9 +210,17 @@ function bindEvents() {
   els.recurringForm.addEventListener("submit", saveRecurringExpense);
   els.smsPermissionToggle.addEventListener("click", toggleSmsPermission);
   els.newCardButton.addEventListener("click", startCardCreate);
+  els.newIncomeButton.addEventListener("click", () => toggleOptionalForm("income"));
+  els.newExpenseButton.addEventListener("click", () => toggleOptionalForm("expense"));
+  els.newPurchaseButton.addEventListener("click", () => toggleOptionalForm("purchase"));
+  els.toggleBudgetForm.addEventListener("click", handleBudgetFormToggle);
+  els.toggleRecurringForm.addEventListener("click", () => toggleOptionalForm("recurring"));
+  els.globalMenuToggle.addEventListener("click", toggleGlobalMenu);
+  els.globalMenuPanel.addEventListener("click", handleGlobalMenuClick);
   els.cardList.addEventListener("submit", saveCardForm);
   els.cardList.addEventListener("input", handleCardFormInput);
   els.cardList.addEventListener("change", handleCardFormInput);
+  els.cardList.addEventListener("keydown", handleCardListKeydown);
   bindCardStackDrag();
   els.purchaseForm.addEventListener("submit", addPurchase);
   els.categoryForm.addEventListener("submit", addCategory);
@@ -205,7 +232,8 @@ function bindEvents() {
 
   document.addEventListener("click", handleDocumentClick);
   document.addEventListener("click", closeQuickAddOnOutsideClick);
-  document.querySelector("#exportData").addEventListener("click", exportData);
+  document.addEventListener("click", closeGlobalMenuOnOutsideClick);
+  document.querySelector("#exportData")?.addEventListener("click", exportData);
   els.exportDataProfile.addEventListener("click", exportData);
   document.querySelector("#importData").addEventListener("change", importData);
 }
@@ -221,17 +249,164 @@ function switchView(viewName) {
   updateScreenTitle(viewName);
   closeQuickAdd();
   closeSidebar();
+  closeGlobalMenu();
+  syncOptionalForms();
   if (typeof window !== "undefined" && window.scrollTo) {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 }
 
+function toggleOptionalForm(name, forceOpen) {
+  optionalForms[name] = typeof forceOpen === "boolean" ? forceOpen : !optionalForms[name];
+  syncOptionalForms(name);
+}
+
+function syncOptionalForms(focusName = "") {
+  const configs = {
+    income: { form: els.incomeForm, button: els.newIncomeButton, open: "Fechar", closed: "Nova receita" },
+    expense: { form: els.expenseForm, button: els.newExpenseButton, open: "Fechar", closed: "Nova despesa" },
+    purchase: { form: els.purchaseForm, button: els.newPurchaseButton, open: "Fechar", closed: "Nova compra" },
+    budget: { form: els.budgetForm, button: els.toggleBudgetForm, open: "Fechar", closed: "Adicionar meta" },
+    recurring: { form: els.recurringForm, button: els.toggleRecurringForm, open: "Fechar", closed: "Adicionar gasto" },
+  };
+
+  Object.entries(configs).forEach(([name, config]) => {
+    const open = Boolean(optionalForms[name]);
+    config.form.hidden = !open;
+    config.button.textContent = open ? config.open : config.closed;
+    config.button.setAttribute("aria-expanded", String(open));
+    if (name === "budget") syncBudgetFormMode();
+    if (open && name === focusName) {
+      requestAnimationFrame(() => {
+        config.form.scrollIntoView({ behavior: "smooth", block: "center" });
+        focusFirstFormField(config.form);
+      });
+    }
+  });
+}
+
+function syncBudgetFormMode() {
+  const submit = els.budgetForm.querySelector("button[type='submit']");
+  if (submit) submit.textContent = editingBudgetId ? "Salvar alteracoes" : "Salvar meta";
+}
+
+function handleBudgetFormToggle() {
+  if (optionalForms.budget) {
+    cancelBudgetEdit();
+    return;
+  }
+  editingBudgetId = null;
+  els.budgetForm.reset();
+  toggleOptionalForm("budget", true);
+}
+
+function toggleGlobalMenu(event) {
+  event?.stopPropagation();
+  const open = !els.globalActionMenu.classList.contains("open");
+  els.globalActionMenu.classList.toggle("open", open);
+  els.globalMenuPanel.hidden = !open;
+  els.globalMenuToggle.setAttribute("aria-expanded", String(open));
+}
+
+function closeGlobalMenu() {
+  els.globalActionMenu.classList.remove("open");
+  els.globalMenuPanel.hidden = true;
+  els.globalMenuToggle.setAttribute("aria-expanded", "false");
+}
+
+function closeGlobalMenuOnOutsideClick(event) {
+  if (event.target.closest("#globalActionMenu")) return;
+  closeGlobalMenu();
+}
+
+function handleGlobalMenuClick(event) {
+  const actionButton = event.target.closest("[data-quick-action]");
+  if (!actionButton) {
+    if (event.target.closest("[data-view-target]")) closeGlobalMenu();
+    return;
+  }
+  event.preventDefault();
+  closeGlobalMenu();
+  openQuickAction(actionButton.dataset.quickAction);
+}
+
+function openQuickAction(action) {
+  const routes = {
+    income: "income",
+    expense: "expenses",
+    purchase: "cards",
+    recurring: "profile",
+  };
+  const forms = {
+    income: "income",
+    expense: "expense",
+    purchase: "purchase",
+    recurring: "recurring",
+  };
+  switchView(routes[action] || "dashboard");
+  toggleOptionalForm(forms[action], true);
+}
+
+function toggleValuesVisibility() {
+  valuesHidden = !valuesHidden;
+  localStorage.setItem(VALUES_HIDDEN_KEY, String(valuesHidden));
+  applyValueVisibility();
+}
+
+function applyValueVisibility() {
+  document.body.classList.toggle("values-hidden", valuesHidden);
+  document.querySelectorAll("[data-action='toggle-values']").forEach((button) => {
+    button.setAttribute("aria-pressed", String(valuesHidden));
+    button.setAttribute("aria-label", valuesHidden ? "Mostrar valores" : "Ocultar valores");
+  });
+
+  document.querySelectorAll(dashboardSensitiveSelectors().join(",")).forEach((element) => {
+    if (valuesHidden && element.dataset.masked !== "true") {
+      element.dataset.valueText = element.textContent;
+      element.dataset.masked = "true";
+      element.textContent = maskDashboardText(element.dataset.valueText);
+    } else if (element.dataset.masked === "true") {
+      element.textContent = element.dataset.valueText || element.textContent;
+      element.dataset.masked = "false";
+    }
+  });
+}
+
+function dashboardSensitiveSelectors() {
+  return [
+    "#metricAvailable",
+    "#metricIncome",
+    "#metricExpenses",
+    "#metricCards",
+    "#metricBalance",
+    "#metricProjectedBalance",
+    "#metricDailyBudget",
+    "#metricFutureCommitments",
+    "#cashBreakdown strong",
+    "#categorySummary .category-meta strong:last-child",
+    "#dueList .amount-card",
+    "#dueList .due-purchase-row strong",
+    "#smartAlerts .alert-row div span",
+    "#decisionCard p",
+    "#financialCalendar .calendar-agenda strong",
+    "#cardDetailContent .amount-card",
+    "#cardDetailContent .card-detail-kpis strong",
+  ];
+}
+
+function maskDashboardText(text) {
+  const value = cleanText(text);
+  if (!value) return "";
+  if (value.includes("R$")) return "R$ ****";
+  return "****";
+}
+
 function updateScreenTitle(viewName) {
   const titles = {
-    dashboard: "Controle Financeiro",
+    dashboard: "Ola, Matheus",
     transactions: "Lancamentos",
     cards: "Cartoes",
-    sms: "Avisos",
+    sms: "Mensagens",
     profile: "Perfil",
     analysis: "Analise mensal",
     income: "Nova receita",
@@ -239,17 +414,16 @@ function updateScreenTitle(viewName) {
     categories: "Categorias",
   };
   els.appTitle.textContent = titles[viewName] || "Controle Financeiro";
+  els.screenSubtitle.textContent = viewName === "dashboard" ? "Controle Financeiro" : "Financas Pessoais";
   els.monthStrip.classList.toggle("hidden", ["cards", "sms", "profile", "categories", "analysis"].includes(viewName));
 }
 
 function openSidebar() {
-  document.body.classList.add("sidebar-open");
-  els.sidebarToggle.setAttribute("aria-expanded", "true");
+  closeGlobalMenu();
 }
 
 function closeSidebar() {
   document.body.classList.remove("sidebar-open");
-  els.sidebarToggle.setAttribute("aria-expanded", "false");
 }
 
 function toggleTheme() {
@@ -313,8 +487,8 @@ function applyTheme(theme) {
   const safeTheme = theme === "dark" ? "dark" : "light";
   document.body.dataset.theme = safeTheme;
   localStorage.setItem(THEME_STORAGE_KEY, safeTheme);
-  els.themeToggle.setAttribute("aria-pressed", String(safeTheme === "dark"));
-  els.themeToggleLabel.textContent = safeTheme === "dark" ? "Tema claro" : "Tema escuro";
+  els.themeToggle?.setAttribute("aria-pressed", String(safeTheme === "dark"));
+  if (els.themeToggleLabel) els.themeToggleLabel.textContent = safeTheme === "dark" ? "Tema claro" : "Tema escuro";
   els.themeProfileLabel.textContent = safeTheme === "dark" ? "Escuro" : "Claro";
   document.querySelector("meta[name='theme-color']")?.setAttribute("content", safeTheme === "dark" ? "#190019" : "#FBE4D8");
 }
@@ -345,7 +519,7 @@ function addIncome(event) {
   setDefaultDates();
   render();
   restoreFormValues(els.incomeForm, keep);
-  focusFirstFormField(els.incomeForm);
+  toggleOptionalForm("income", false);
   showToast("Receita adicionada.");
 }
 
@@ -369,7 +543,7 @@ function addExpense(event) {
   setDefaultDates();
   render();
   restoreFormValues(els.expenseForm, keep);
-  focusFirstFormField(els.expenseForm);
+  toggleOptionalForm("expense", false);
   showToast("Despesa adicionada.");
 }
 
@@ -429,7 +603,7 @@ function addPurchase(event) {
   render();
   restoreFormValues(els.purchaseForm, keep);
   renderInstallmentPreview();
-  focusFirstFormField(els.purchaseForm);
+  toggleOptionalForm("purchase", false);
   showToast("Compra adicionada.");
 }
 
@@ -460,12 +634,21 @@ function saveBudget(event) {
   const form = new FormData(els.budgetForm);
   const categoryId = form.get("categoryId");
   const limit = toMoney(form.get("limit"));
-  const existing = state.budgets.find((budget) => budget.categoryId === categoryId);
-  if (existing) existing.limit = limit;
-  else state.budgets.push({ id: createId(), categoryId, limit });
+  const duplicate = state.budgets.find((budget) => budget.categoryId === categoryId && budget.id !== editingBudgetId);
+  if (duplicate) {
+    alert("Ja existe uma meta para essa categoria.");
+    return;
+  }
+  if (editingBudgetId) {
+    state.budgets = state.budgets.map((budget) => budget.id === editingBudgetId ? { ...budget, categoryId, limit } : budget);
+  } else {
+    state.budgets.push({ id: createId(), categoryId, limit });
+  }
   persist();
   els.budgetForm.reset();
+  editingBudgetId = null;
   render();
+  toggleOptionalForm("budget", false);
   showToast("Meta salva.");
 }
 
@@ -484,7 +667,7 @@ function saveRecurringExpense(event) {
   persist();
   els.recurringForm.reset();
   render();
-  focusFirstFormField(els.recurringForm);
+  toggleOptionalForm("recurring", false);
   showToast("Recorrente salvo.");
 }
 
@@ -565,6 +748,14 @@ function handleDocumentClick(event) {
     toggleQuickAdd();
     return;
   }
+  if (button.dataset.action === "toggle-global-menu") {
+    toggleGlobalMenu(event);
+    return;
+  }
+  if (button.dataset.action === "toggle-values") {
+    toggleValuesVisibility();
+    return;
+  }
   if (button.dataset.action === "delete-income") {
     state.incomes = state.incomes.filter((item) => item.id !== id);
     showToast("Receita removida.");
@@ -579,12 +770,23 @@ function handleDocumentClick(event) {
   }
   if (button.dataset.action === "delete-card") {
     if (editingCardId === id) cancelCardEdit();
+    if (selectedCardId === id) selectedCardId = null;
     if (state.purchases.some((purchase) => purchase.cardId === id)) {
       alert("Exclua as compras desse cartao antes de remover o cartao.");
       return;
     }
     state.cards = state.cards.filter((card) => card.id !== id);
     showToast("Cartao removido.");
+  }
+  if (button.dataset.action === "show-card-detail") {
+    showCardDetail(id);
+    return;
+  }
+  if (button.dataset.action === "close-card-detail") {
+    selectedCardId = null;
+    renderCards();
+    renderCardDetail();
+    return;
   }
   if (button.dataset.action === "edit-card") {
     startCardEdit(id);
@@ -607,6 +809,15 @@ function handleDocumentClick(event) {
     }
     state.categories = state.categories.filter((item) => item.id !== id);
     showToast("Categoria removida.");
+  }
+  if (button.dataset.action === "edit-budget") {
+    startBudgetEdit(id);
+    return;
+  }
+  if (button.dataset.action === "delete-budget") {
+    if (editingBudgetId === id) cancelBudgetEdit();
+    state.budgets = state.budgets.filter((budget) => budget.id !== id);
+    showToast("Meta removida.");
   }
   if (button.dataset.action === "toggle-recurring") {
     state.recurringExpenses = state.recurringExpenses.map((item) => item.id === id ? { ...item, active: !item.active } : item);
@@ -656,8 +867,10 @@ function startCardEdit(id) {
   if (!card) return;
   isCreatingCard = false;
   editingCardId = id;
+  selectedCardId = id;
   switchView("cards");
   renderCards();
+  renderCardDetail();
   scrollActiveCardForm();
 }
 
@@ -671,6 +884,22 @@ function resetCardForm() {
   isCreatingCard = false;
 }
 
+function startBudgetEdit(id) {
+  const budget = state.budgets.find((item) => item.id === id);
+  if (!budget) return;
+  editingBudgetId = id;
+  switchView("profile");
+  els.budgetForm.elements.categoryId.value = budget.categoryId;
+  els.budgetForm.elements.limit.value = budget.limit;
+  toggleOptionalForm("budget", true);
+}
+
+function cancelBudgetEdit() {
+  editingBudgetId = null;
+  els.budgetForm.reset();
+  toggleOptionalForm("budget", false);
+}
+
 function scrollActiveCardForm() {
   requestAnimationFrame(() => {
     document.querySelector("[data-card-form]")?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -682,6 +911,21 @@ function handleCardFormInput(event) {
   const form = event.target.closest("[data-card-form]");
   if (!form) return;
   updateInlineCardPreview(form);
+}
+
+function handleCardListKeydown(event) {
+  if (!["Enter", " "].includes(event.key)) return;
+  const card = event.target.closest("[data-action='show-card-detail']");
+  if (!card) return;
+  event.preventDefault();
+  showCardDetail(card.dataset.id);
+}
+
+function showCardDetail(id) {
+  selectedCardId = id;
+  renderCards();
+  renderCardDetail();
+  scrollCardDetailPanel();
 }
 
 function confirmPendingSms(id) {
@@ -717,6 +961,7 @@ function confirmPendingSms(id) {
 
 function prefillFromPendingSms(pending) {
   if (pending.type === "card") {
+    toggleOptionalForm("purchase", true);
     const card = pending.cardLastDigits ? state.cards.find((item) => item.lastDigits === pending.cardLastDigits) : state.cards[0];
     restoreFormValues(els.purchaseForm, {
       description: pending.merchant,
@@ -742,6 +987,7 @@ function prefillFromPendingSms(pending) {
 function render() {
   state = normalizeState(state);
   applyDueRecurringExpenses(selectedMonth);
+  syncOptionalForms();
   renderCategoryOptions();
   renderDashboard();
   renderMonthChart();
@@ -749,6 +995,7 @@ function render() {
   renderIncome();
   renderExpenses();
   renderCards();
+  renderCardDetail();
   renderPurchases();
   renderCategories();
   renderBudgets();
@@ -773,10 +1020,196 @@ function renderDashboard() {
   els.metricAvailable.classList.toggle("amount-expense", summary.availableNow < 0);
   renderCashBreakdown(summary);
   renderSmartAlerts(summary);
+  renderDecisionCard(summary);
+  renderFinancialCalendar(summary);
   renderInvoiceOverview(summary);
   renderDueList(summary);
   renderCategorySummary(summary);
   renderRecentActivity(summary);
+  applyValueVisibility();
+}
+
+function renderDecisionCard(summary) {
+  const status = getFinancialStatus(summary);
+  els.decisionCard.className = `decision-card ${status.level}`;
+  els.decisionCard.innerHTML = `
+    <div>
+      <span>${escapeHtml(status.label)}</span>
+      <strong>${escapeHtml(status.title)}</strong>
+      <p>${escapeHtml(status.text)}</p>
+    </div>
+    <button class="text-button" type="button" data-view-target="${escapeHtml(status.target)}">${escapeHtml(status.action)}</button>
+  `;
+}
+
+function renderFinancialCalendar(summary) {
+  const [year, monthNumber] = selectedMonth.split("-").map(Number);
+  const days = new Date(year, monthNumber, 0).getDate();
+  const firstWeekday = new Date(year, monthNumber - 1, 1).getDay();
+  const today = todayInput();
+  const todayParts = parseDateParts(today);
+  const currentMonth = getMonthKey(today);
+  const events = buildFinancialCalendarEvents(summary);
+  const eventsByDay = events.reduce((groups, event) => {
+    groups[event.day] = groups[event.day] || [];
+    groups[event.day].push(event);
+    return groups;
+  }, {});
+
+  const blanks = Array.from({ length: firstWeekday }, () => `<span class="calendar-day empty"></span>`).join("");
+  const dayCells = Array.from({ length: days }, (_, index) => {
+    const day = index + 1;
+    const dayEvents = eventsByDay[day] || [];
+    const isToday = selectedMonth === currentMonth && day === todayParts.day;
+    const dots = dayEvents.slice(0, 3).map((event) => `<i class="${escapeHtml(event.type)}"></i>`).join("");
+    return `
+      <article class="calendar-day ${isToday ? "today" : ""} ${dayEvents.length ? "has-events" : ""}">
+        <strong>${day}</strong>
+        <span>${dots}</span>
+      </article>
+    `;
+  }).join("");
+
+  const agenda = events
+    .filter((event) => selectedMonth !== currentMonth || event.date >= today)
+    .slice(0, 5);
+
+  els.financialCalendar.innerHTML = `
+    <div class="calendar-legend">
+      <span><i class="income"></i>Receitas</span>
+      <span><i class="expense"></i>Vencimentos</span>
+      <span><i class="card"></i>Faturas</span>
+    </div>
+    <div class="calendar-weekdays" aria-hidden="true">
+      <span>D</span><span>S</span><span>T</span><span>Q</span><span>Q</span><span>S</span><span>S</span>
+    </div>
+    <div class="calendar-grid">${blanks}${dayCells}</div>
+    <div class="calendar-agenda">
+      ${agenda.length ? agenda.map(calendarAgendaRow).join("") : emptyState("Sem vencimentos futuros neste mes.")}
+    </div>
+  `;
+}
+
+function buildFinancialCalendarEvents(summary) {
+  const invoiceEvents = state.cards
+    .map((card) => {
+      const total = getCardInvoiceTotal(card.id, selectedMonth);
+      const date = getInvoiceDueDate(selectedMonth, card.dueDay);
+      return total > 0 ? {
+        type: "card",
+        date,
+        day: parseDateParts(date).day,
+        title: `Fatura ${card.name}`,
+        meta: `Final ${card.lastDigits || "----"}`,
+        amount: total,
+      } : null;
+    })
+    .filter(Boolean);
+
+  const incomeEvents = summary.incomes
+    .filter((item) => !isReceivedIncome(item, selectedMonth) || !isPastOrToday(item.date))
+    .map((item) => ({
+      type: "income",
+      date: item.date,
+      day: parseDateParts(item.date).day,
+      title: item.description,
+      meta: isReceivedIncome(item, selectedMonth) ? "Receita" : "Receita prevista",
+      amount: item.amount,
+    }));
+
+  const expenseEvents = [
+    ...summary.futureCashExpenses,
+    ...summary.futureRecurring,
+  ]
+    .filter((item, index, items) => items.findIndex((candidate) => candidate.id === item.id) === index)
+    .map((item) => ({
+      type: "expense",
+      date: item.date,
+      day: parseDateParts(item.date).day,
+      title: item.description,
+      meta: `${getCategoryName(item.categoryId)} - ${item.paymentMethod}`,
+      amount: item.amount,
+    }));
+
+  return [...incomeEvents, ...expenseEvents, ...invoiceEvents]
+    .sort((a, b) => a.date.localeCompare(b.date) || typeOrder(a.type) - typeOrder(b.type));
+}
+
+function calendarAgendaRow(event) {
+  return `
+    <article class="calendar-agenda-row ${escapeHtml(event.type)}">
+      <span>${String(event.day).padStart(2, "0")}</span>
+      <div>
+        <strong>${escapeHtml(event.title)}</strong>
+        <small>${escapeHtml(event.meta)}</small>
+      </div>
+      <strong>${BRL.format(event.amount)}</strong>
+    </article>
+  `;
+}
+
+function typeOrder(type) {
+  const order = { income: 1, expense: 2, card: 3 };
+  return order[type] || 4;
+}
+
+function getFinancialStatus(summary) {
+  const days = getRemainingDaysInMonth(selectedMonth);
+  const cardWeight = summary.expenseTotal > 0 ? summary.cardTotal / summary.expenseTotal : 0;
+  const futureWeight = summary.availableNow > 0 ? summary.futureCommitments / summary.availableNow : 0;
+
+  if (summary.projectedBalance < 0) {
+    return {
+      level: "danger",
+      label: "Risco no fechamento",
+      title: "Segure os gastos variaveis",
+      text: `Seu saldo previsto fica ${BRL.format(Math.abs(summary.projectedBalance))} negativo. Revise cartoes, recorrentes e despesas futuras.`,
+      action: "Ver lancamentos",
+      target: "transactions",
+    };
+  }
+
+  if (summary.dailyAvailable > 0 && summary.dailyAvailable < 50) {
+    return {
+      level: "warning",
+      label: "Atencao no ritmo",
+      title: "Gaste com mais criterio",
+      text: `Restam ${BRL.format(summary.dailyAvailable)} por dia por ${days} dias. Evite compras fora do plano ate virar o mes.`,
+      action: "Ver categorias",
+      target: "categories",
+    };
+  }
+
+  if (futureWeight >= 0.65) {
+    return {
+      level: "warning",
+      label: "Dinheiro comprometido",
+      title: "Boa parte ainda vai vencer",
+      text: `Voce tem ${BRL.format(summary.futureCommitments)} em compromissos futuros. Confira vencimentos antes de novas compras.`,
+      action: "Ver vencimentos",
+      target: "cards",
+    };
+  }
+
+  if (cardWeight >= 0.55) {
+    return {
+      level: "warning",
+      label: "Cartao em destaque",
+      title: "A fatura pesa no mes",
+      text: `Cartoes representam ${Math.round(cardWeight * 100)}% das despesas do mes. Acompanhe parcelas e limite disponivel.`,
+      action: "Ver cartoes",
+      target: "cards",
+    };
+  }
+
+  return {
+    level: "safe",
+    label: "Ritmo saudavel",
+    title: "Voce pode gastar com seguranca",
+    text: `Mantendo esse ritmo, o saldo previsto fecha em ${BRL.format(summary.projectedBalance)} e o limite diario fica em ${BRL.format(summary.dailyAvailable)}.`,
+    action: "Ver analise",
+    target: "analysis",
+  };
 }
 
 function renderInvoiceOverview(summary) {
@@ -828,7 +1261,16 @@ function renderCashBreakdown(summary) {
 function renderSmartAlerts(summary) {
   const alerts = buildSmartAlerts(summary);
   els.smartAlerts.innerHTML = alerts.length
-    ? alerts.map((alert) => `<article class="alert-row ${alert.level}"><strong>${escapeHtml(alert.title)}</strong><span>${escapeHtml(alert.text)}</span></article>`).join("")
+    ? alerts.map((alert) => `
+        <article class="alert-row ${alert.level}" data-view-target="${escapeHtml(alert.target || "dashboard")}">
+          <span class="alert-icon ${alert.level}"></span>
+          <div>
+            <strong>${escapeHtml(alert.title)}</strong>
+            <span>${escapeHtml(alert.text)}</span>
+          </div>
+          <i class="row-chevron"></i>
+        </article>
+      `).join("")
     : emptyState("Tudo sob controle por enquanto.");
 }
 
@@ -847,19 +1289,28 @@ function renderDueList(summary) {
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
 
   els.dueList.innerHTML = dues.length
-    ? dues.map((item) => `
+    ? dues.map((item) => {
+        const used = item.card.limitTotal > 0 ? Math.min((getCardOpenAmount(item.card.id, selectedMonth) / item.card.limitTotal) * 100, 100) : 0;
+        const days = daysBetween(todayInput(), item.dueDate);
+        return `
         <article class="due-row">
           <div class="due-top">
             <div class="card-title-block">
               <div class="card-identity">${cardIconPair(item.card, "small")}</div>
               <div>
                 <strong>${escapeHtml(item.card.name)}</strong>
-                <span>${escapeHtml(getBankName(item.card.bankId))} - final ${escapeHtml(item.card.lastDigits || "----")}</span>
+                <span>Final ${escapeHtml(item.card.lastDigits || "----")}</span>
               </div>
             </div>
-            <strong class="amount-card">${BRL.format(item.total)}</strong>
+            <div class="due-amount-block">
+              <strong class="amount-card">${BRL.format(item.total)}</strong>
+              <span class="due-badge ${days < 0 ? "late" : days === 0 ? "today" : ""}">${escapeHtml(dueBadgeText(days))}</span>
+            </div>
           </div>
           <span>Vencimento em ${formatDate(item.dueDate)}</span>
+          <div class="progress-track">
+            <div class="progress-fill" style="width:${used}%"></div>
+          </div>
           <div class="due-purchase-list">
             ${item.installments
               .map((installment) => `
@@ -870,7 +1321,8 @@ function renderDueList(summary) {
               `).join("")}
           </div>
         </article>
-      `).join("")
+      `;
+      }).join("")
     : emptyState(summary.cardTotal > 0 ? "Sem vencimentos cadastrados." : "Sem faturas neste mes.", "Nova compra", "cards");
 }
 
@@ -1111,8 +1563,11 @@ function renderCards() {
     const invoice = getCardInvoiceTotal(card.id, selectedMonth);
     const openAmount = getCardOpenAmount(card.id, selectedMonth);
     const available = getCardAvailableLimit(card.id, selectedMonth);
+    const nextInvoice = getCardInvoiceTotal(card.id, addMonths(selectedMonth, 1));
+    const futureInstallments = getAllInstallments().filter((item) => item.purchase.cardId === card.id && item.month > selectedMonth);
+    const futureTotal = sumAmounts(futureInstallments.map((item) => item.amount));
     rows.push(`
-      <article class="card-row card-display card-tone-${(index % 6) + 1} bank-card-${escapeHtml(card.bankId || "other")} ${index === 0 ? "primary-card" : ""}">
+      <article class="card-row card-display card-tone-${(index % 6) + 1} bank-card-${escapeHtml(card.bankId || "other")} ${index === 0 ? "primary-card" : ""} ${selectedCardId === card.id ? "selected-card" : ""}" data-action="show-card-detail" data-id="${card.id}" role="button" tabindex="0">
         <div class="card-top">
           <div class="card-title-block">
             <div class="card-identity">${cardIconPair(card)}</div>
@@ -1145,6 +1600,11 @@ function renderCards() {
             <strong>${BRL.format(available)}</strong>
           </div>
         </div>
+        <div class="card-insight-row">
+          <span>Proxima fatura <strong>${BRL.format(nextInvoice)}</strong></span>
+          <span>Parcelas futuras <strong>${BRL.format(futureTotal)}</strong></span>
+        </div>
+        <em class="card-tap-hint">Toque para ver detalhes</em>
       </article>
     `);
   });
@@ -1154,6 +1614,112 @@ function renderCards() {
     rows.push(`<button class="add-card-row" type="button" data-action="new-card">Adicionar cartao</button>`);
   }
   els.cardList.innerHTML = rows.length ? rows.join("") : emptyState("Nenhum cartao cadastrado.", "Novo cartao", "cards");
+}
+
+function renderCardDetail() {
+  const card = state.cards.find((item) => item.id === selectedCardId);
+  if (!card) {
+    selectedCardId = null;
+    els.cardDetailPanel.hidden = true;
+    els.cardDetailContent.innerHTML = "";
+    return;
+  }
+
+  const currentInstallments = getInstallmentsForMonth(selectedMonth)
+    .filter((item) => item.purchase.cardId === card.id)
+    .sort((a, b) => b.purchase.date.localeCompare(a.purchase.date));
+  const futureInstallments = getAllInstallments()
+    .filter((item) => item.purchase.cardId === card.id && item.month > selectedMonth)
+    .sort((a, b) => a.month.localeCompare(b.month) || a.dueDate.localeCompare(b.dueDate))
+    .slice(0, 8);
+  const recentPurchases = state.purchases
+    .filter((purchase) => purchase.cardId === card.id)
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .slice(0, 6);
+  const invoice = sumAmounts(currentInstallments.map((item) => item.amount));
+  const nextInvoice = getCardInvoiceTotal(card.id, addMonths(selectedMonth, 1));
+  const openAmount = getCardOpenAmount(card.id, selectedMonth);
+  const available = getCardAvailableLimit(card.id, selectedMonth);
+  const usedPercent = card.limitTotal > 0 ? Math.min((openAmount / card.limitTotal) * 100, 100) : 0;
+  const futureTotal = sumAmounts(getAllInstallments()
+    .filter((item) => item.purchase.cardId === card.id && item.month > selectedMonth)
+    .map((item) => item.amount));
+
+  els.cardDetailPanel.hidden = false;
+  els.cardDetailContent.innerHTML = `
+    <section class="card-detail-hero bank-card-${escapeHtml(card.bankId || "other")}">
+      <div class="card-title-block">
+        <div class="card-identity">${cardIconPair(card)}</div>
+        <div>
+          <strong>${escapeHtml(card.name)}</strong>
+          <span>${escapeHtml(getBankName(card.bankId))} - ${escapeHtml(getBrandName(card.brandId))} - final ${escapeHtml(card.lastDigits || "----")}</span>
+          <span>Fecha dia ${card.closingDay} - vence dia ${card.dueDay}</span>
+        </div>
+      </div>
+      <div class="card-detail-main">
+        <span>Fatura atual</span>
+        <strong class="amount-card">${BRL.format(invoice)}</strong>
+      </div>
+      <div class="progress-track">
+        <div class="progress-fill" style="width:${usedPercent}%"></div>
+      </div>
+      <button class="small-action" type="button" data-action="edit-card" data-id="${card.id}">Editar limite</button>
+    </section>
+    <section class="card-detail-kpis">
+      <article><span>Limite total</span><strong>${BRL.format(card.limitTotal)}</strong></article>
+      <article><span>Disponivel</span><strong>${BRL.format(available)}</strong></article>
+      <article><span>Proxima fatura</span><strong>${BRL.format(nextInvoice)}</strong></article>
+      <article><span>Parcelas futuras</span><strong>${BRL.format(futureTotal)}</strong></article>
+    </section>
+    <section class="card-detail-section">
+      <h3>Compras da fatura atual</h3>
+      <div class="card-detail-list">
+        ${currentInstallments.length ? currentInstallments.map(cardInstallmentRow).join("") : emptyState("Nenhuma compra nesta fatura.")}
+      </div>
+    </section>
+    <section class="card-detail-section">
+      <h3>Parcelas futuras</h3>
+      <div class="card-detail-list">
+        ${futureInstallments.length ? futureInstallments.map(cardInstallmentRow).join("") : emptyState("Sem parcelas futuras para este cartao.")}
+      </div>
+    </section>
+    <section class="card-detail-section">
+      <h3>Compras recentes</h3>
+      <div class="card-detail-list">
+        ${recentPurchases.length ? recentPurchases.map(cardPurchaseRow).join("") : emptyState("Nenhuma compra registrada.")}
+      </div>
+    </section>
+  `;
+}
+
+function cardInstallmentRow(item) {
+  return `
+    <article class="card-detail-row">
+      <div>
+        <strong>${escapeHtml(item.purchase.description)}</strong>
+        <span>${escapeHtml(monthLabel(item.month))} - ${item.totalInstallments > 1 ? `${item.number}/${item.totalInstallments}` : "A vista"} - ${escapeHtml(getCategoryName(item.purchase.categoryId))}</span>
+      </div>
+      <strong>${BRL.format(item.amount)}</strong>
+    </article>
+  `;
+}
+
+function cardPurchaseRow(purchase) {
+  return `
+    <article class="card-detail-row">
+      <div>
+        <strong>${escapeHtml(purchase.description)}</strong>
+        <span>${formatDate(purchase.date)} - ${escapeHtml(getCategoryName(purchase.categoryId))} - ${Math.max(1, Number(purchase.installments) || 1)}x</span>
+      </div>
+      <strong>${BRL.format(purchase.amount)}</strong>
+    </article>
+  `;
+}
+
+function scrollCardDetailPanel() {
+  requestAnimationFrame(() => {
+    els.cardDetailPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
 }
 
 function renderPurchases() {
@@ -1303,6 +1869,10 @@ function renderBudgets() {
             </div>
             <div class="progress-track"><div class="progress-fill" style="width:${percent}%"></div></div>
             <span>Gasto ${BRL.format(spent)} de ${BRL.format(budget.limit)} - restante ${BRL.format(remaining)}</span>
+            <div class="card-actions">
+              <button class="small-action" type="button" data-action="edit-budget" data-id="${budget.id}">Editar</button>
+              <button class="delete-button" type="button" data-action="delete-budget" data-id="${budget.id}" aria-label="Excluir meta">&times;</button>
+            </div>
           </article>
         `;
       }).join("")
@@ -1334,11 +1904,17 @@ function renderAnalysis() {
   const previous = getMonthlySummary(previousMonth);
   const topCategory = Object.entries(current.categoryTotals).sort((a, b) => b[1] - a[1])[0];
   const expenseDiff = current.expenseTotal - previous.expenseTotal;
+  const bestCategory = getCategoryDelta(current, previous, "down");
+  const worstCategory = getCategoryDelta(current, previous, "up");
   els.analysisSummary.innerHTML = [
     ["Receitas", BRL.format(current.incomeTotal), compareText(current.incomeTotal, previous.incomeTotal)],
     ["Despesas", BRL.format(current.expenseTotal), compareText(current.expenseTotal, previous.expenseTotal)],
     ["Cartao", BRL.format(current.cardTotal), compareText(current.cardTotal, previous.cardTotal)],
+    ["Saldo final previsto", BRL.format(current.projectedBalance), current.projectedBalance >= 0 ? "Fechamento positivo se mantiver o ritmo" : "Risco de fechar negativo"],
+    ["Disponivel por dia", BRL.format(current.dailyAvailable), `${getRemainingDaysInMonth(selectedMonth)} dias restantes no mes`],
     ["Maior categoria", topCategory ? getCategoryName(topCategory[0]) : "Sem dados", topCategory ? BRL.format(topCategory[1]) : ""],
+    ["Melhor comportamento", bestCategory ? getCategoryName(bestCategory.categoryId) : "Sem reducao", bestCategory ? `Economia de ${BRL.format(bestCategory.diff)}` : "Compare com meses futuros"],
+    ["Ponto de atencao", worstCategory ? getCategoryName(worstCategory.categoryId) : "Sem aumento", worstCategory ? `Aumento de ${BRL.format(worstCategory.diff)}` : "Nada subiu frente ao mes anterior"],
     ["Comportamento", expenseDiff <= 0 ? "Melhorou" : "Atencao", expenseDiff <= 0 ? "Gastos abaixo do mes anterior" : `Gastos ${BRL.format(expenseDiff)} acima`],
   ].map(analysisRow).join("");
 
@@ -1350,6 +1926,20 @@ function renderAnalysis() {
         return analysisRow([getCategoryName(categoryId), BRL.format(now), compareText(now, before)]);
       }).join("")
     : emptyState("Ainda nao ha historico suficiente para comparar categorias.");
+}
+
+function getCategoryDelta(current, previous, direction) {
+  const categoryIds = [...new Set([...Object.keys(current.categoryTotals), ...Object.keys(previous.categoryTotals)])];
+  const deltas = categoryIds
+    .map((categoryId) => ({
+      categoryId,
+      diff: (current.categoryTotals[categoryId] || 0) - (previous.categoryTotals[categoryId] || 0),
+    }))
+    .filter((item) => direction === "up" ? item.diff > 0 : item.diff < 0)
+    .sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
+
+  if (!deltas.length) return null;
+  return { ...deltas[0], diff: Math.abs(deltas[0].diff) };
 }
 
 function analysisRow([label, value, caption]) {
@@ -1769,46 +2359,158 @@ function applyDueRecurringExpenses(month) {
 
 function buildSmartAlerts(summary) {
   const alerts = [];
+  const previous = getMonthlySummary(addMonths(selectedMonth, -1));
+  const remainingDays = getRemainingDaysInMonth(selectedMonth);
   if (summary.projectedBalance < 0) {
-    alerts.push({ level: "danger", title: "Risco de saldo negativo", text: "Nesse ritmo, seu saldo previsto pode ficar abaixo de zero antes do fim do mes." });
+    addSmartAlert(
+      alerts,
+      "danger",
+      100,
+      "Risco de saldo negativo",
+      `Faltam ${BRL.format(Math.abs(summary.projectedBalance))} para fechar no azul. Revise faturas, recorrentes ou receitas previstas.`,
+      "transactions",
+    );
   }
-  alerts.push({ level: "info", title: "Disponivel por dia", text: `Voce ainda tem ${BRL.format(summary.dailyAvailable)} por dia ate o fim do mes.` });
+  addSmartAlert(
+    alerts,
+    summary.dailyAvailable < 50 ? "warning" : "info",
+    summary.dailyAvailable < 50 ? 78 : 44,
+    "Disponivel por dia",
+    `Voce ainda tem ${BRL.format(summary.dailyAvailable)} por dia por ${remainingDays} dias ate o fim do mes.`,
+    "dashboard",
+  );
 
   state.budgets.forEach((budget) => {
     const spent = summary.categoryTotals[budget.categoryId] || 0;
     const percent = budget.limit > 0 ? spent / budget.limit : 0;
     if (percent >= 0.8) {
-      alerts.push({
-        level: percent >= 1 ? "danger" : "warning",
-        title: `${getCategoryName(budget.categoryId)} em atencao`,
-        text: `Voce ja usou ${Math.round(percent * 100)}% do limite de ${BRL.format(budget.limit)}.`,
-      });
+      addSmartAlert(
+        alerts,
+        percent >= 1 ? "danger" : "warning",
+        percent >= 1 ? 96 : 86,
+        `${getCategoryName(budget.categoryId)} perto do limite`,
+        `Voce ja usou ${Math.round(percent * 100)}% da meta. Restam ${BRL.format(Math.max(0, budget.limit - spent))}.`,
+        "categories",
+      );
     }
   });
 
-  const soon = state.cards
+  Object.entries(summary.categoryTotals).forEach(([categoryId, current]) => {
+    const previousAmount = previous.categoryTotals[categoryId] || 0;
+    const diff = current - previousAmount;
+    if (previousAmount >= 50 && diff >= 50 && current > previousAmount * 1.25) {
+      addSmartAlert(
+        alerts,
+        "warning",
+        68,
+        `${getCategoryName(categoryId)} acima da media`,
+        `Voce gastou ${BRL.format(diff)} a mais que no mes passado. Veja se ainda cabe no plano.`,
+        "categories",
+      );
+    }
+  });
+
+  const deliveryKeywords = ["ifood", "delivery", "rappi", "ubereats", "uber eats", "aiqfome", "restaurante", "lanche", "pizza", "hamburguer"];
+  const delivery = getKeywordSpend(summary, deliveryKeywords);
+  const previousDelivery = getKeywordSpend(previous, deliveryKeywords);
+  if (delivery >= 100 && !previousDelivery) {
+    addSmartAlert(alerts, "warning", 66, "Delivery entrou forte", `Ja foram ${BRL.format(delivery)} em delivery/restaurantes neste mes.`, "transactions");
+  } else if (previousDelivery >= 30 && delivery - previousDelivery >= 40 && delivery > previousDelivery * 1.25) {
+    addSmartAlert(
+      alerts,
+      "warning",
+      72,
+      "Delivery subiu neste mes",
+      `Voce gastou ${BRL.format(delivery - previousDelivery)} a mais que no mes anterior.`,
+      "transactions",
+    );
+  }
+
+  state.cards
     .map((card) => ({ card, total: getCardInvoiceTotal(card.id, selectedMonth), dueDate: getInvoiceDueDate(selectedMonth, card.dueDay) }))
     .filter((item) => item.total > 0)
-    .find((item) => daysBetween(todayInput(), item.dueDate) >= 0 && daysBetween(todayInput(), item.dueDate) <= 3);
-  if (soon) {
-    alerts.push({ level: "warning", title: "Fatura proxima", text: `${soon.card.name} vence em ${daysBetween(todayInput(), soon.dueDate)} dias.` });
-  }
+    .forEach((item) => {
+      const days = daysBetween(todayInput(), item.dueDate);
+      if (days >= 0 && days <= 3) {
+        addSmartAlert(
+          alerts,
+          "warning",
+          88,
+          `${item.card.name} vence ${days === 0 ? "hoje" : `em ${days} dias`}`,
+          `Separe ${BRL.format(item.total)} para pagar a fatura sem apertar o saldo.`,
+          "cards",
+        );
+      }
+    });
 
   state.cards.forEach((card) => {
     const current = getCardInvoiceTotal(card.id, selectedMonth);
     const previous = getCardInvoiceTotal(card.id, addMonths(selectedMonth, -1));
-    if (previous > 0 && current > previous * 1.3) {
-      alerts.push({ level: "warning", title: "Fatura acima da media", text: `${card.name} esta ${Math.round(((current / previous) - 1) * 100)}% maior que no mes anterior.` });
+    const diff = current - previous;
+    if (previous > 0 && diff >= 50 && current > previous * 1.3) {
+      addSmartAlert(
+        alerts,
+        "warning",
+        62,
+        `Fatura do ${card.name} subiu`,
+        `Ela esta ${Math.round(((current / previous) - 1) * 100)}% maior que no mes anterior. Confira compras recentes.`,
+        "cards",
+      );
     }
   });
 
-  return alerts.slice(0, 4);
+  return dedupeAlerts(alerts)
+    .sort((a, b) => b.priority - a.priority)
+    .slice(0, 4)
+    .map(({ priority, ...alert }) => alert);
+}
+
+function addSmartAlert(alerts, level, priority, title, text, target = "dashboard") {
+  alerts.push({ level, priority, title, text, target });
+}
+
+function getKeywordSpend(summary, keywords) {
+  const normalizedKeywords = keywords.map(normalizeForSearch);
+  const cash = summary.cashExpenses.map((item) => ({
+    description: item.description,
+    amount: item.amount,
+    categoryId: item.categoryId,
+  }));
+  const card = summary.cardInstallments.map((item) => ({
+    description: item.purchase.description,
+    amount: item.amount,
+    categoryId: item.purchase.categoryId,
+  }));
+
+  return sumAmounts([...cash, ...card]
+    .filter((item) => {
+      const haystack = normalizeForSearch(`${item.description} ${getCategoryName(item.categoryId)}`);
+      return normalizedKeywords.some((keyword) => haystack.includes(keyword));
+    })
+    .map((item) => item.amount));
+}
+
+function dedupeAlerts(alerts) {
+  const seen = new Set();
+  return alerts.filter((alert) => {
+    const key = normalizeForSearch(`${alert.title}:${alert.text}`);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function daysBetween(start, end) {
   const startDate = new Date(`${start}T00:00:00`);
   const endDate = new Date(`${end}T00:00:00`);
   return Math.round((endDate - startDate) / 86400000);
+}
+
+function dueBadgeText(days) {
+  if (days < 0) return `Venceu ha ${Math.abs(days)} dias`;
+  if (days === 0) return "Vence hoje";
+  if (days === 1) return "Em 1 dia";
+  return `Em ${days} dias`;
 }
 
 function setDefaultDates() {
@@ -1974,6 +2676,7 @@ function normalizeState(input) {
 
   normalized.incomes = normalized.incomes.map((income) => ({ ...income, status: income.status || "received" }));
   normalized.expenses = normalized.expenses.map((expense) => ({ ...expense, status: expense.status || "paid" }));
+  normalized.budgets = normalized.budgets.map((budget) => ({ ...budget, id: budget.id || createId(), limit: Number(budget.limit) || 0 }));
   normalized.settings = { smsEnabled: true, ...normalized.settings };
 
   return normalized;
