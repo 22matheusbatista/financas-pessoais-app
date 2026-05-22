@@ -1,0 +1,5 @@
+"C:/Users/Matheus Ferreira/financas-pessoais-app/android-native/app/src/main/java/com/matheus/financas/FinancialNotificationListener.java"
+"C:/Users/Matheus Ferreira/financas-pessoais-app/android-native/app/src/main/java/com/matheus/financas/FinancialNotificationParser.java"
+"C:/Users/Matheus Ferreira/financas-pessoais-app/android-native/app/src/main/java/com/matheus/financas/MainActivity.java"
+"C:/Users/Matheus Ferreira/financas-pessoais-app/android-native/app/src/main/java/com/matheus/financas/NativeEventStore.java"
+"C:/Users/Matheus Ferreira/financas-pessoais-app/android-native/app/build/manual/generated/com/matheus/financas/R.java"

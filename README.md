@@ -19,6 +19,14 @@ Para instalar no celular, publique a pasta em um endereco HTTPS, como GitHub Pag
 - Menu lateral recolhivel em estilo Notion para atalhos extras.
 - Alternancia entre tema claro e escuro.
 - Dashboard com receitas, despesas a vista, cartoes, saldo restante e disponivel.
+- Previsao de saldo ate o fim do mes.
+- Valor medio disponivel por dia.
+- Separacao entre Pix, debito, dinheiro e cartao.
+- Alertas inteligentes preventivos.
+- Metas por categoria.
+- Gastos recorrentes mensais com lancamento automatico quando vencem.
+- Tela de analise mensal com comparacao ao mes anterior.
+- Pendencias de SMS com confirmacao manual.
 - Cadastro e exclusao de receitas.
 - Cadastro e exclusao de despesas pagas com dinheiro, Pix ou debito.
 - Cadastro, edicao inline e exclusao de cartoes de credito com banco, bandeira, logos reais, limite, fechamento e vencimento.
