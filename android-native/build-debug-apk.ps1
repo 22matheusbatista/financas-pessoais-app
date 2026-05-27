@@ -49,9 +49,9 @@ if (Test-Path $manualBuild) {
     Remove-Item -LiteralPath $resolvedManualBuild -Recurse -Force
 }
 
-$assetsDir = Join-Path $androidRoot "app\src\main\assets\www"
-if (Test-Path $assetsDir) {
-    $resolvedAssetsDir = (Resolve-Path $assetsDir).Path
+$assetsRoot = Join-Path $androidRoot "app\src\main\assets"
+if (Test-Path $assetsRoot) {
+    $resolvedAssetsDir = (Resolve-Path $assetsRoot).Path
     if (-not $resolvedAssetsDir.StartsWith($androidRoot)) {
         throw "Assets dir fora da pasta esperada."
     }
@@ -63,12 +63,12 @@ $generatedDir = Join-Path $manualBuild "generated"
 $classesDir = Join-Path $manualBuild "classes"
 $dexDir = Join-Path $manualBuild "dex"
 $outputsDir = Join-Path $androidRoot "app\build\outputs\apk\debug"
-New-Item -ItemType Directory -Force -Path $compiledDir, $generatedDir, $classesDir, $dexDir, $outputsDir, $assetsDir | Out-Null
+New-Item -ItemType Directory -Force -Path $compiledDir, $generatedDir, $classesDir, $dexDir, $outputsDir, $assetsRoot | Out-Null
 
 foreach ($file in @("index.html", "styles.css", "app.js", "manifest.webmanifest", "service-worker.js")) {
-    Copy-Item -LiteralPath (Join-Path $repoRoot $file) -Destination $assetsDir -Force
+    Copy-Item -LiteralPath (Join-Path $repoRoot $file) -Destination $assetsRoot -Force
 }
-Copy-Item -LiteralPath (Join-Path $repoRoot "assets") -Destination $assetsDir -Recurse -Force
+Copy-Item -LiteralPath (Join-Path $repoRoot "assets") -Destination $assetsRoot -Recurse -Force
 
 $resDir = Join-Path $androidRoot "app\src\main\res"
 $manifest = Join-Path $androidRoot "app\src\main\AndroidManifest.xml"
@@ -94,7 +94,7 @@ Set-Content -LiteralPath $preparedManifest -Value $manifestText -Encoding UTF8
     --manifest $preparedManifest `
     -R $compiledResources `
     --java $generatedDir `
-    -A $assetsDir `
+    -A $assetsRoot `
     --min-sdk-version 23 `
     --target-sdk-version 36 `
     --version-code 1 `

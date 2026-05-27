@@ -29,7 +29,7 @@ tasks.register<Copy>("syncWebAssets") {
         include("service-worker.js")
         include("assets/**")
     }
-    into(layout.projectDirectory.dir("src/main/assets/www"))
+    into(layout.projectDirectory.dir("src/main/assets"))
 }
 
 tasks.named("preBuild") {
