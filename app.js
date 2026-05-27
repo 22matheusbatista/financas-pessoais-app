@@ -1236,6 +1236,10 @@ function handleDocumentClick(event) {
     renderPurchases();
     return;
   }
+  if (button.dataset.action === "show-analysis-info") {
+    showToast("Compara o mes atual com o anterior usando receitas, despesas, cartoes, metas e contas.");
+    return;
+  }
   if (button.dataset.action === "confirm-can-buy") {
     confirmCanBuyPurchase();
     return;
@@ -2707,7 +2711,6 @@ function renderAnalysis() {
   const currentTotals = getAnalysisTotals(current);
   const previousTotals = getAnalysisTotals(previous);
   const hasPrevious = hasAnalysisData(previous);
-  const series = buildAnalysisDailySeries(selectedMonth, current);
   const categoryChanges = getAnalysisCategoryChanges(current, previous);
   const increased = categoryChanges.filter((item) => item.diff > 0).slice(0, 4);
   const reduced = categoryChanges.filter((item) => item.diff < 0).slice(0, 4);
@@ -2730,7 +2733,7 @@ function renderAnalysis() {
       <p>${hasPrevious ? `Comparado a ${escapeHtml(monthLabel(previousMonth))}` : "Ainda sem mes anterior suficiente para comparar."}</p>
     </div>
     <div class="analysis-header-actions">
-      <button class="analysis-info-button" type="button" aria-label="Sobre a analise" title="A analise compara receitas, despesas, cartoes, metas e contas recorrentes do mes selecionado.">${iconSvg("info")}</button>
+      <button class="analysis-info-button" type="button" data-action="show-analysis-info" aria-label="Sobre a analise" title="A analise compara receitas, despesas, cartoes, metas e contas recorrentes do mes selecionado.">${iconSvg("info")}</button>
     </div>
   `;
 
@@ -2742,7 +2745,6 @@ function renderAnalysis() {
       value: currentTotals.income,
       previous: previousTotals.income,
       higherIsGood: true,
-      points: series.income,
     }),
     analysisKpiCard({
       kind: "expense",
@@ -2751,7 +2753,6 @@ function renderAnalysis() {
       value: currentTotals.cash,
       previous: previousTotals.cash,
       higherIsGood: false,
-      points: series.cash,
     }),
     analysisKpiCard({
       kind: "card",
@@ -2760,7 +2761,6 @@ function renderAnalysis() {
       value: currentTotals.card,
       previous: previousTotals.card,
       higherIsGood: false,
-      points: series.card,
     }),
     analysisKpiCard({
       kind: "saving",
@@ -2769,11 +2769,9 @@ function renderAnalysis() {
       value: currentTotals.savings,
       previous: previousTotals.savings,
       higherIsGood: true,
-      points: series.balance,
     }),
   ].join("");
 
-  els.analysisEvolutionChart.innerHTML = renderAnalysisEvolutionChart(series);
   els.analysisScore.innerHTML = renderAnalysisScore(score, current, previous);
   els.analysisIncreasedCategories.innerHTML = hasPrevious
     ? renderAnalysisCategoryList(increased, "up")
@@ -2806,7 +2804,7 @@ function hasAnalysisData(summary) {
   return Boolean(summary && (summary.incomeTotal || summary.cashExpenseTotal || summary.cardTotal));
 }
 
-function analysisKpiCard({ kind, icon, title, value, previous, higherIsGood, points }) {
+function analysisKpiCard({ kind, icon, title, value, previous, higherIsGood }) {
   const change = getAnalysisChange(value, previous, higherIsGood);
   return `
     <article class="analysis-kpi-card ${escapeHtml(kind)}">
@@ -2815,21 +2813,41 @@ function analysisKpiCard({ kind, icon, title, value, previous, higherIsGood, poi
         <span>${escapeHtml(title)}</span>
       </div>
       <strong>${BRL.format(value)}</strong>
-      <small class="${escapeHtml(change.tone)}">${escapeHtml(change.label)}</small>
-      ${renderSparkline(points, kind)}
+      <div class="analysis-kpi-change">
+        <small class="${escapeHtml(change.tone)}">${escapeHtml(change.label)}</small>
+        <span class="${escapeHtml(change.tone)}">${escapeHtml(change.description)}</span>
+      </div>
+      <em class="${escapeHtml(change.tone)}">${escapeHtml(change.amountLabel)}</em>
     </article>
   `;
 }
 
 function getAnalysisChange(current, previous, higherIsGood = true) {
   const diff = current - previous;
-  if (!previous && !current) return { label: "0%", tone: "neutral" };
-  if (!previous) return { label: "Novo", tone: higherIsGood ? "positive" : "warning" };
+  if (!previous && !current) {
+    return {
+      label: "0%",
+      amountLabel: "Sem mudança",
+      description: "Estável",
+      tone: "neutral",
+    };
+  }
+  if (!previous) {
+    return {
+      label: "Novo",
+      amountLabel: BRL.format(current),
+      description: "Sem comparação anterior",
+      tone: higherIsGood ? "positive" : "warning",
+    };
+  }
   const percent = Math.round((diff / previous) * 100);
   const good = diff === 0 ? null : higherIsGood ? diff > 0 : diff < 0;
   const signal = percent > 0 ? "+" : "";
+  const amountSignal = diff > 0 ? "+" : diff < 0 ? "-" : "";
   return {
     label: `${signal}${percent}%`,
+    amountLabel: diff === 0 ? "Sem mudança" : `${amountSignal} ${BRL.format(Math.abs(diff))}`,
+    description: good === null ? "Estável" : good ? "Melhorou" : "Piorou",
     tone: good === null ? "neutral" : good ? "positive" : "warning",
   };
 }

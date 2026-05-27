@@ -8522,3 +8522,74 @@ body[data-view="profile"] .top-actions {
 body[data-view="profile"] .avatar-button {
   grid-column: 4;
 }
+
+/* Simplified monthly analysis */
+.analysis-kpi-card {
+  min-height: 132px;
+  padding: 14px;
+  align-content: start;
+}
+
+.analysis-kpi-card > strong {
+  margin-top: 10px;
+}
+
+.analysis-kpi-change {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.analysis-kpi-change small,
+.analysis-kpi-card > em {
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 0.76rem;
+  font-weight: 900;
+  font-style: normal;
+  line-height: 1.1;
+}
+
+.analysis-kpi-change span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.analysis-kpi-change .positive,
+.analysis-kpi-card > em.positive {
+  color: #5df47a;
+  background: rgba(69, 220, 101, 0.12);
+}
+
+.analysis-kpi-change .warning,
+.analysis-kpi-card > em.warning {
+  color: #ffb057;
+  background: rgba(255, 169, 0, 0.12);
+}
+
+.analysis-kpi-change .neutral,
+.analysis-kpi-card > em.neutral {
+  color: rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.analysis-kpi-card > em {
+  display: inline-flex;
+  width: max-content;
+  max-width: 100%;
+  margin-top: 8px;
+}
+
+.analysis-sparkline,
+.analysis-evolution-panel {
+  display: none !important;
+}
+
+body[data-theme="light"] .analysis-kpi-change .neutral,
+body[data-theme="light"] .analysis-kpi-card > em.neutral {
+  color: #522B5B;
+  background: rgba(82, 43, 91, 0.08);
+}
