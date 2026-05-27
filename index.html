@@ -19,6 +19,11 @@
     <main class="app-shell">
       <section class="workspace">
         <header class="topbar">
+          <button class="back-button" type="button" id="backButton" aria-label="Voltar para tela anterior" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M15 5 8 12l7 7"></path>
+            </svg>
+          </button>
           <button class="avatar-button" type="button" data-view-target="profile" aria-label="Abrir perfil">
             <span>MF</span>
           </button>
@@ -144,7 +149,7 @@
 
             <section class="panel">
               <div class="panel-heading">
-                <h2>Separacao do dinheiro</h2>
+                <h2>Separação do dinheiro</h2>
               </div>
               <div id="cashBreakdown" class="money-breakdown"></div>
             </section>
@@ -335,7 +340,7 @@
                     <input name="amount" type="text" inputmode="numeric" data-money-input placeholder="R$ 0,00" enterkeyhint="next" required />
                   </label>
                   <label>
-                    Data da compra
+                    Data de lançamento
                     <input name="date" type="date" required />
                   </label>
                 </div>
@@ -539,7 +544,7 @@
                   <input name="amount" type="text" inputmode="numeric" data-money-input placeholder="R$ 0,00" enterkeyhint="next" required />
                 </label>
                 <label>
-                  Data
+                  Data de lançamento
                   <input name="date" type="date" required />
                 </label>
               </div>

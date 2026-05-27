@@ -61,6 +61,7 @@ const defaultCategories = [
 ];
 
 const els = {
+  backButton: document.querySelector("#backButton"),
   themeToggle: document.querySelector("#themeToggle"),
   themeToggleLabel: document.querySelector("#themeToggleLabel"),
   themeToggleProfile: document.querySelector("#themeToggleProfile"),
@@ -154,6 +155,8 @@ const els = {
 
 let state = loadState();
 let selectedMonth = getMonthKey(new Date());
+let currentView = "dashboard";
+let viewHistory = [];
 let editingCardId = null;
 let isCreatingCard = false;
 let selectedCardId = null;
@@ -209,6 +212,7 @@ function bindEvents() {
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") closeGlobalMenu();
   });
+  els.backButton?.addEventListener("click", navigateBack);
   els.themeToggle?.addEventListener("click", toggleTheme);
   els.themeToggleProfile.addEventListener("click", toggleTheme);
 
@@ -306,7 +310,20 @@ function setMoneyInputValue(input, value) {
   input.value = amount > 0 ? BRL.format(amount) : "";
 }
 
-function switchView(viewName) {
+function switchView(viewName, options = {}) {
+  if (!document.getElementById(viewName)) return;
+  const { push = true } = options;
+  if (viewName === currentView) {
+    closeQuickAdd();
+    closeSidebar();
+    closeGlobalMenu();
+    updateBackButton();
+    return;
+  }
+  if (push && currentView) {
+    viewHistory = [...viewHistory.filter((view) => view !== viewName), currentView].slice(-12);
+  }
+  currentView = viewName;
   document.querySelectorAll(".view").forEach((view) => {
     view.classList.toggle("active", view.id === viewName);
   });
@@ -315,6 +332,7 @@ function switchView(viewName) {
   });
   document.body.dataset.view = viewName;
   updateScreenTitle(viewName);
+  updateBackButton();
   closeQuickAdd();
   closeSidebar();
   closeGlobalMenu();
@@ -322,6 +340,21 @@ function switchView(viewName) {
   if (typeof window !== "undefined" && window.scrollTo) {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
+}
+
+function navigateBack() {
+  const previousView = viewHistory.pop() || "dashboard";
+  switchView(previousView, { push: false });
+}
+
+function updateBackButton() {
+  if (!els.backButton) return;
+  const canGoBack = currentView !== "dashboard";
+  els.backButton.hidden = !canGoBack;
+  els.backButton.disabled = !canGoBack;
+  const previousTitle = viewHistory.length ? getViewTitle(viewHistory[viewHistory.length - 1]) : "Inicio";
+  els.backButton.setAttribute("aria-label", `Voltar para ${previousTitle}`);
+  els.backButton.setAttribute("title", `Voltar para ${previousTitle}`);
 }
 
 function toggleOptionalForm(name, forceOpen) {
@@ -524,6 +557,12 @@ function maskDashboardText(text) {
 }
 
 function updateScreenTitle(viewName) {
+  els.appTitle.textContent = getViewTitle(viewName);
+  els.screenSubtitle.textContent = viewName === "dashboard" ? "Controle Financeiro" : "Financas Pessoais";
+  els.monthStrip.classList.toggle("hidden", ["cards", "sms", "profile", "canBuy", "recurringControl", "categories", "analysis"].includes(viewName));
+}
+
+function getViewTitle(viewName) {
   const titles = {
     dashboard: "Ol\u00e1, Matheus \u{1F44B}",
     transactions: "Lancamentos",
@@ -538,9 +577,7 @@ function updateScreenTitle(viewName) {
     expenses: "Nova despesa",
     categories: "Categorias",
   };
-  els.appTitle.textContent = titles[viewName] || "Controle Financeiro";
-  els.screenSubtitle.textContent = viewName === "dashboard" ? "Controle Financeiro" : "Financas Pessoais";
-  els.monthStrip.classList.toggle("hidden", ["cards", "sms", "profile", "canBuy", "recurringControl", "categories", "analysis"].includes(viewName));
+  return titles[viewName] || "Controle Financeiro";
 }
 
 function openSidebar() {
@@ -719,7 +756,7 @@ function addPurchase(event) {
     id: createId(),
     description: cleanText(form.get("description")),
     amount: toMoney(form.get("amount")),
-    date: form.get("date"),
+    date: normalizeDateInput(form.get("date")),
     categoryId: form.get("categoryId"),
     cardId: form.get("cardId"),
     installments: Math.max(1, Number(form.get("installments")) || 1),
@@ -748,7 +785,7 @@ function buildCanBuyAnalysis(form) {
   const input = {
     description: cleanText(form.get("description")) || "Nova compra",
     amount: toMoney(form.get("amount")),
-    date: form.get("date") || todayInput(),
+    date: normalizeDateInput(form.get("date")),
     categoryId: form.get("categoryId"),
     paymentMethod: form.get("paymentMethod") || "Cartao",
     cardId: form.get("cardId"),
@@ -923,7 +960,7 @@ function renderCanBuyResult(analysis) {
   const summaryItems = [
     ["Compra", analysis.input.description],
     ["Valor", BRL.format(analysis.input.amount)],
-    ["Data", formatDate(analysis.input.date)],
+    ["Data de lancamento", formatDate(analysis.input.date)],
     ["Categoria", getCategoryName(analysis.input.categoryId)],
     ["Pagamento", analysis.isCard ? "Cartao de credito" : analysis.input.paymentMethod],
   ];
@@ -3210,7 +3247,7 @@ function renderInstallmentPreview() {
   const card = state.cards.find((item) => item.id === form.cardId.value) || state.cards[0];
   const amount = toMoney(form.amount.value);
   const installments = Math.max(1, Number(form.installments.value) || 1);
-  const date = form.date.value || todayInput();
+  const date = normalizeDateInput(form.date.value);
 
   if (!amount || !card) {
     els.installmentPreview.textContent = "Informe valor e parcelas para ver a fatura inicial.";
@@ -3414,13 +3451,19 @@ function getInstallmentsForPurchase(purchase) {
 }
 
 function getFirstInvoiceMonth(dateString, card) {
-  const purchaseMonth = getMonthKey(dateString);
-  const closingDay = clampDayInput(card.closingDay);
-  const dueDay = clampDayInput(card.dueDay);
-  const closingInDueMonth = closingDay <= dueDay;
-  const invoiceMonthClosingInPurchaseMonth = closingInDueMonth ? purchaseMonth : addMonths(purchaseMonth, 1);
-  const closingDate = getInvoiceClosingDate(invoiceMonthClosingInPurchaseMonth, { closingDay, dueDay });
-  return dateString <= closingDate ? invoiceMonthClosingInPurchaseMonth : addMonths(invoiceMonthClosingInPurchaseMonth, 1);
+  return getInvoiceMonthForTransactionDate(dateString, card);
+}
+
+function getInvoiceMonthForTransactionDate(dateString, card) {
+  const transactionDate = normalizeDateInput(dateString);
+  const transactionMonth = getMonthKey(transactionDate);
+  // A fatura e identificada pelo mes de vencimento; a compra entra na primeira fatura cujo fechamento ainda nao passou.
+  for (let offset = -1; offset <= 13; offset += 1) {
+    const invoiceMonth = addMonths(transactionMonth, offset);
+    const closingDate = getInvoiceClosingDate(invoiceMonth, card);
+    if (transactionDate <= closingDate) return invoiceMonth;
+  }
+  return addMonths(transactionMonth, 1);
 }
 
 function getInvoiceClosingDate(invoiceMonth, card) {
@@ -4005,6 +4048,20 @@ function clampDayInput(value) {
 
 function cleanText(value) {
   return String(value || "").trim();
+}
+
+function normalizeDateInput(value) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
+  }
+  const text = String(value || "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  const brazilian = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (brazilian) {
+    const [, day, month, year] = brazilian;
+    return `${year}-${pad(month)}-${pad(day)}`;
+  }
+  return todayInput();
 }
 
 function getMonthKey(date) {

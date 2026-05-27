@@ -7796,17 +7796,59 @@ body[data-theme="light"] .analysis-highlight-card.warning small {
 }
 
 /* Internal screens header */
+.back-button {
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  background: #050505;
+  color: #f4f4f6;
+  display: none;
+  place-items: center;
+  box-shadow: none;
+}
+
+.back-button[hidden] {
+  display: none !important;
+}
+
+.back-button svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+body:not([data-view="dashboard"]) .back-button:not([hidden]) {
+  display: grid;
+  grid-column: 1;
+}
+
 body:not([data-view="dashboard"]) .avatar-button {
   display: none;
 }
 
 body:not([data-view="dashboard"]) .topbar {
-  grid-template-columns: minmax(0, 1fr);
-  gap: 0;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
 }
 
 body:not([data-view="dashboard"]) .title-row {
-  grid-column: 1;
+  grid-column: 2;
+}
+
+body:not([data-view="dashboard"]) .top-actions {
+  grid-column: 3;
+}
+
+body[data-theme="light"] .back-button {
+  border-color: rgba(0, 0, 0, 0.12);
+  background: #050505;
+  color: #f4f4f6;
 }
 
 /* Compact categories screen */
@@ -8448,4 +8490,35 @@ body[data-theme="light"][data-view="dashboard"] .list-section .panel-heading h2 
 .bell-action.has-pending::after {
   opacity: 1;
   transform: scale(1);
+}
+
+/* Back navigation final override */
+body:not([data-view="dashboard"]) .topbar {
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+body:not([data-view="dashboard"]) .title-row {
+  grid-column: 2;
+}
+
+body[data-view="sms"] .top-actions {
+  grid-column: 3;
+}
+
+body[data-view="profile"] .topbar {
+  grid-template-columns: 42px minmax(0, 1fr) auto auto;
+}
+
+body[data-view="profile"] .title-row {
+  grid-column: 2;
+}
+
+body[data-view="profile"] .top-actions {
+  grid-column: 3;
+}
+
+body[data-view="profile"] .avatar-button {
+  grid-column: 4;
 }
