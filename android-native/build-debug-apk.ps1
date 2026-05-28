@@ -1,7 +1,13 @@
 $ErrorActionPreference = "Stop"
 
-$androidRoot = (Resolve-Path $PSScriptRoot).Path
-$repoRoot = (Resolve-Path (Join-Path $androidRoot "..")).Path
+$scriptPath = $PSCommandPath
+if (-not $scriptPath) { $scriptPath = $MyInvocation.MyCommand.Path }
+if ($scriptPath) {
+    $androidRoot = Split-Path -Parent (Resolve-Path $scriptPath).Path
+} else {
+    $androidRoot = (Get-Location).Path
+}
+$repoRoot = Split-Path -Parent $androidRoot
 $sdkRoot = $env:ANDROID_HOME
 if (-not $sdkRoot) { $sdkRoot = $env:ANDROID_SDK_ROOT }
 if (-not $sdkRoot) { $sdkRoot = Join-Path $env:LOCALAPPDATA "Android\Sdk" }
@@ -39,30 +45,16 @@ $javac = Join-Path $javaHome "bin\javac.exe"
 $jar = Join-Path $javaHome "bin\jar.exe"
 $keytool = Join-Path $javaHome "bin\keytool.exe"
 
-$manualBuild = Join-Path $androidRoot "app\build\manual"
-$resolvedManualParent = (Resolve-Path (Join-Path $androidRoot "app")).Path
-if (Test-Path $manualBuild) {
-    $resolvedManualBuild = (Resolve-Path $manualBuild).Path
-    if (-not $resolvedManualBuild.StartsWith($resolvedManualParent)) {
-        throw "Build dir fora da pasta esperada."
-    }
-    Remove-Item -LiteralPath $resolvedManualBuild -Recurse -Force
-}
+$buildStamp = Get-Date -Format "yyyyMMddHHmmssfff"
+$manualBuild = Join-Path $repoRoot ("build-android-manual-" + $buildStamp)
 
-$assetsRoot = Join-Path $androidRoot "app\src\main\assets"
-if (Test-Path $assetsRoot) {
-    $resolvedAssetsDir = (Resolve-Path $assetsRoot).Path
-    if (-not $resolvedAssetsDir.StartsWith($androidRoot)) {
-        throw "Assets dir fora da pasta esperada."
-    }
-    Remove-Item -LiteralPath $resolvedAssetsDir -Recurse -Force
-}
+$assetsRoot = Join-Path $repoRoot ("build-android-assets-" + $buildStamp)
 
 $compiledDir = Join-Path $manualBuild "compiled"
 $generatedDir = Join-Path $manualBuild "generated"
 $classesDir = Join-Path $manualBuild "classes"
 $dexDir = Join-Path $manualBuild "dex"
-$outputsDir = Join-Path $androidRoot "app\build\outputs\apk\debug"
+$outputsDir = Join-Path $repoRoot "apk"
 New-Item -ItemType Directory -Force -Path $compiledDir, $generatedDir, $classesDir, $dexDir, $outputsDir, $assetsRoot | Out-Null
 
 foreach ($file in @("index.html", "styles.css", "app.js", "manifest.webmanifest", "service-worker.js")) {
@@ -127,7 +119,9 @@ if ($LASTEXITCODE -ne 0) { throw "Falha no zipalign." }
 
 $keystoreDir = Join-Path $androidRoot "app\build\debug-keystore"
 $keystore = Join-Path $keystoreDir "debug.keystore"
-New-Item -ItemType Directory -Force -Path $keystoreDir | Out-Null
+if (-not (Test-Path $keystoreDir)) {
+    New-Item -ItemType Directory -Force -Path $keystoreDir | Out-Null
+}
 if (-not (Test-Path $keystore)) {
     & $keytool -genkeypair `
         -keystore $keystore `
